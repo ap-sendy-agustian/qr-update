@@ -1,6 +1,5 @@
 <div>
   <input type="file" (change)="onFileSelected($event)" accept="image/*">
-  <img *ngIf="imageSrc" [src]="imageSrc" alt="Selected Image" style="max-width: 100%; height: auto;">
 </div>  
 
 <br>
@@ -13,9 +12,5 @@
 <br>
 
 <button (click)="duar()">Generate</button>
-
-<p *ngIf="originalQrText">Original QR Text : {{originalQrText}}</p>
-
-<p *ngIf="generatedQrText">Generated QR Text : {{generatedQrText}}</p>
 
 <qrcode *ngIf="generatedQrText" [qrdata]="generatedQrText" [width]="256" [errorCorrectionLevel]="'M'"></qrcode>
