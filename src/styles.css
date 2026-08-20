@@ -1,1 +1,49 @@
-/* You can add global styles to this file, and also import other style files */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: #fef3c7;
+  background-image: radial-gradient(circle, #00000015 1px, transparent 1px);
+  background-size: 20px 20px;
+  min-height: 100vh;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+
+/* Scrollbar neobrutalism — Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+ 
+::-webkit-scrollbar-track {
+  background: #fef3c7;
+  border-left: 3px solid #000;
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: #60a5fa;
+  border: 3px solid #000;
+  border-radius: 0;
+}
+ 
+::-webkit-scrollbar-thumb:hover {
+  background: #fde047;
+}
+ 
+::-webkit-scrollbar-corner {
+  background: #fef3c7;
+}
+ 
+/* Scrollbar neobrutalism — Firefox */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #60a5fa #fef3c7;
+}

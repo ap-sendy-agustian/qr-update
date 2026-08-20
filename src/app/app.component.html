@@ -1,16 +1,63 @@
-<div>
-  <input type="file" (change)="onFileSelected($event)" accept="image/*">
-</div>  
+<div class="page">
+  <div class="card">
+    <h1 class="title">QRIS Amount Injector</h1>
 
-<br>
-<br>
+    <div class="section">
+      <label class="file-btn" for="fileUpload">
+        {{ selectedFile?.name || 'Choose file' }}
+      </label>
+      <input
+        id="fileUpload"
+        type="file"
+        (change)="onFileSelected($event)"
+        accept="image/*"
+        class="file-input-hidden"
+      >
+    </div>
 
-<label>Nominal : </label>
-<input type="text" [(ngModel)]="newAmount">
+    <div class="section example-box">
+      <p class="example-label">Contoh format upload QR nya kayak gini ya:</p>
+      <img src="assets/images/contoh.png" alt="Contoh QRIS" class="example-img">
+    </div>
 
-<br>
-<br>
+    <div class="divider">
+      <span>ATAU</span>
+    </div>
 
-<button (click)="duar()">Generate</button>
+    <div class="section">
+      <label class="label">Paste QR text langsung</label>
+      <textarea
+        [(ngModel)]="rawQrText"
+        rows="4"
+        placeholder="00020101021126640018ID.CO.EXAMPLE.WWW..."
+        class="textarea"
+      ></textarea>
+    </div>
 
-<qrcode *ngIf="generatedQrText" [qrdata]="generatedQrText" [width]="256" [errorCorrectionLevel]="'M'"></qrcode>
+    <div class="section">
+      <label class="label">Nominal</label>
+      <input type="text" [(ngModel)]="newAmount" placeholder="0" class="text-input">
+    </div>
+
+    <p class="hint">
+      Kalau kamu isi keduanya, sistem otomatis pakai <strong>gambar dulu</strong>, baru fallback ke QR text kalau gambar kosong.
+    </p>
+
+    <div *ngIf="errorMessage" class="error-box">
+      {{ errorMessage }}
+    </div>
+
+    <div class="button-row">
+      <button (click)="generate()" class="btn btn-blue">Generate</button>
+    </div>
+
+    <div *ngIf="generatedQrText" class="result-box">
+      <p class="result-label">QR hasil generate:</p>
+      <qrcode [qrdata]="generatedQrText" [width]="256" [errorCorrectionLevel]="'M'"></qrcode>
+    </div>
+
+    <div *ngIf="generatedQrText" class="result-box">
+      <p class="result-label">QR Raw Text : {{generatedQrText}}</p>
+    </div>
+  </div>
+</div>
