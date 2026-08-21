@@ -1,6 +1,5 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
 import { BrowserQRCodeReader } from '@zxing/browser';
-import * as exifr from 'exifr';
 
 interface TlvTag {
   tag: string;
@@ -17,30 +16,31 @@ interface TlvTag {
 })
 export class AppComponent {
 
-  title = 'qr-update';
-
   codeReader: BrowserQRCodeReader;
 
+  title = 'qr-update';
+
   selectedFile: File | null = null;
+
   imageSrc: string | ArrayBuffer | null = null;
 
   originalQrText: string | null = null;
+
   generatedQrText: string | null = null;
 
   newAmount = '';
+
   rawQrText = '';
 
   copiedFeedback = false;
 
-  // Toast
   showCopyToast = false;
+
   toastMessage = '';
+
   toastType: 'success' | 'error' = 'success';
 
   private toastTimeout?: ReturnType<typeof setTimeout>;
-
-  // Prevent multiple generate/decode at the same time
-  isGenerating = false;
 
   @ViewChild('qrReveal')
   qrRevealRef?: ElementRef<HTMLDivElement>;
@@ -50,7 +50,7 @@ export class AppComponent {
   }
 
   /**
-   * Remove uploaded file.
+   * Remove uploaded file
    */
   removeSelectedFile(): void {
     this.selectedFile = null;
@@ -66,12 +66,13 @@ export class AppComponent {
   }
 
   /**
-   * Show toast message.
+   * Show toast message
    */
   private showToast(
     message: string,
     type: 'success' | 'error' = 'success'
   ): void {
+
     this.toastMessage = message;
     this.toastType = type;
     this.showCopyToast = true;
@@ -86,15 +87,19 @@ export class AppComponent {
   }
 
   /**
-   * Copy generated QR text.
+   * Copy generated QR text
    */
   async copyToClipboard(): Promise<void> {
+
     if (!this.generatedQrText) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(this.generatedQrText);
+
+      await navigator.clipboard.writeText(
+        this.generatedQrText
+      );
 
       this.copiedFeedback = true;
 
@@ -108,6 +113,7 @@ export class AppComponent {
       }, 2000);
 
     } catch (error) {
+
       console.error(
         'Failed to copy QR text:',
         error
@@ -121,26 +127,37 @@ export class AppComponent {
   }
 
   /**
-   * File selected.
+   * File selected
    */
   onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
 
-    if (!input.files || input.files.length === 0) {
-      return;
+    const input =
+      event.target as HTMLInputElement;
+
+    if (
+      input.files &&
+      input.files.length > 0
+    ) {
+
+      const file = input.files[0];
+
+      this.selectedFile = file;
+
+      console.log('Selected file:', {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
+
+      this.readImage(file);
     }
-
-    const file = input.files[0];
-
-    this.selectedFile = file;
-
-    this.readImage(file);
   }
 
   /**
-   * Read uploaded image for preview.
+   * Read uploaded image for preview
    */
   private readImage(file: File): void {
+
     const reader = new FileReader();
 
     reader.onload = () => {
@@ -148,6 +165,7 @@ export class AppComponent {
     };
 
     reader.onerror = () => {
+
       this.showToast(
         'Gagal membaca gambar.',
         'error'
@@ -158,55 +176,117 @@ export class AppComponent {
   }
 
   /**
-   * Main generate method.
+   * Main generate method
    *
    * Image has priority.
    * Raw QR text is used only when no image is selected.
    */
   async generate(): Promise<void> {
 
-    // Prevent multiple generate requests
-    // while the image is still being decoded.
-    if (this.isGenerating) {
+    if (this.selectedFile) {
+
+      console.log(
+        'Sumber input: gambar (' +
+        this.selectedFile.name +
+        ')'
+      );
+
+      await this.decodeQRCodeImage(
+        this.selectedFile
+      );
+
       return;
     }
 
-    this.isGenerating = true;
+    if (
+      this.rawQrText &&
+      this.rawQrText.trim() !== ''
+    ) {
+
+      console.log(
+        'Sumber input: raw QR text'
+      );
+
+      this.originalQrText =
+        this.rawQrText.trim();
+
+      this.runValidationAndReplace();
+
+      return;
+    }
+
+    this.showToast(
+      'Upload gambar QR atau paste QR text terlebih dahulu.',
+      'error'
+    );
+  }
+
+  /**
+   * Decode QR code from uploaded image.
+   *
+   * Strategy:
+   *
+   * 1. Load image properly using Promise.
+   * 2. Try direct ZXing image decoding.
+   * 3. If that fails, fallback to canvas.
+   * 4. Resize huge iPhone photos before canvas decoding.
+   */
+  async decodeQRCodeImage(
+    file: File
+  ): Promise<void> {
+
+    const imageUrl =
+      URL.createObjectURL(file);
 
     try {
 
-      /**
-       * IMAGE HAS PRIORITY
+      /*
+       * ==================================================
+       * LOAD IMAGE
+       * ==================================================
        */
-      if (this.selectedFile) {
+      const img =
+        await this.loadImage(imageUrl);
+
+      console.log(
+        'Image loaded:',
+        {
+          width: img.width,
+          height: img.height,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+          fileType: file.type,
+          fileSize: file.size
+        }
+      );
+
+      /*
+       * ==================================================
+       * 1. DIRECT IMAGE DECODING
+       * ==================================================
+       *
+       * Try decoding directly from HTMLImageElement.
+       *
+       * This avoids forcing every image through canvas
+       * first and is useful for Safari/iOS.
+       */
+      try {
 
         console.log(
-          'Sumber input: gambar (' +
-          this.selectedFile.name +
-          ')'
+          'Trying direct image decoding...'
         );
 
-        await this.decodeQRCodeImage(
-          this.selectedFile
-        );
-
-        return;
-      }
-
-      /**
-       * FALLBACK TO RAW TEXT
-       */
-      if (
-        this.rawQrText &&
-        this.rawQrText.trim() !== ''
-      ) {
-
-        console.log(
-          'Sumber input: raw QR text'
-        );
+        const result =
+          await this.codeReader
+            .decodeFromImageElement(img);
 
         const qrText =
-          this.rawQrText.trim();
+          result.getText();
+
+        console.log(
+          'QR decoded directly:',
+          qrText
+        );
 
         const validationError =
           this.validateQrisFormat(qrText);
@@ -225,90 +305,45 @@ export class AppComponent {
           return;
         }
 
-        // Only update original QR after
-        // validation succeeds.
-        this.originalQrText = qrText;
+        /*
+         * Only update state after QR
+         * successfully passes validation.
+         */
+        this.originalQrText =
+          qrText;
 
         this.replaceQrText();
 
         return;
+
+      } catch (directError) {
+
+        console.warn(
+          'Direct image decoding failed. Trying canvas fallback...',
+          directError
+        );
       }
 
-      /**
-       * NOTHING SELECTED
+      /*
+       * ==================================================
+       * 2. CANVAS FALLBACK
+       * ==================================================
        */
-      this.showToast(
-        'Upload gambar QR atau paste QR text terlebih dahulu.',
-        'error'
+
+      console.log(
+        'Trying canvas decoding...'
       );
 
-    } finally {
-      this.isGenerating = false;
-    }
-  }
-
-  /**
-   * Decode QR code from uploaded image.
-   *
-   * NEW: membaca EXIF orientation dulu sebelum di-draw ke canvas.
-   * Ini penting khususnya untuk foto yang diambil langsung dari kamera HP,
-   * karena kamera HP biasanya menyimpan rotasi lewat metadata EXIF
-   * (bukan benar-benar memutar pixel-nya). Browser preview otomatis
-   * "menurut" metadata ini, tapi context.drawImage() di canvas
-   * MENGABAIKAN metadata itu - jadi versi canvas-nya bisa jadi
-   * miring 90/180/270 derajat dari yang terlihat di preview,
-   * dan itu yang bikin ZXing gagal decode QR-nya di mobile
-   * meskipun terlihat normal di layar.
-   */
-  async decodeQRCodeImage(
-    file: File
-  ): Promise<void> {
-
-    const imageUrl =
-      URL.createObjectURL(file);
-
-    try {
-
-      /**
-       * NEW - baca EXIF orientation lewat method terpisah (getExifOrientation),
-       * biar gampang di-mock di unit test tanpa perlu spy langsung ke ES module.
-       */
-      const orientation = await this.getExifOrientation(file);
-
-      /**
-       * Load image.
-       */
-      const img =
-        await new Promise<HTMLImageElement>(
-          (resolve, reject) => {
-
-            const image =
-              new Image();
-
-            image.onload = () => {
-              resolve(image);
-            };
-
-            image.onerror = () => {
-              reject(
-                new Error(
-                  'IMAGE_LOAD_ERROR'
-                )
-              );
-            };
-
-            image.src = imageUrl;
-          }
-        );
-
-      /**
-       * Create canvas.
-       */
       const canvas =
         document.createElement('canvas');
 
       const context =
-        canvas.getContext('2d');
+        canvas.getContext(
+          '2d',
+          {
+            willReadFrequently: true
+          }
+        );
 
       if (!context) {
 
@@ -320,50 +355,86 @@ export class AppComponent {
         return;
       }
 
-      /**
-       * NEW - kalau orientasi butuh rotasi 90/270 derajat (nilai 5-8),
-       * width & height canvas harus di-swap supaya gambar hasil
-       * rotasi tidak terpotong.
+      /*
+       * iPhone photos can be very large.
+       *
+       * Example:
+       * 4032 x 3024
+       *
+       * We don't need that much resolution
+       * for QR detection.
        */
-      const needsSwap = orientation >= 5 && orientation <= 8;
-      canvas.width = needsSwap ? img.height : img.width;
-      canvas.height = needsSwap ? img.width : img.height;
+      const MAX_SIZE = 2000;
 
-      /**
-       * NEW - terapkan transform sesuai EXIF orientation
-       * SEBELUM drawImage dipanggil.
-       */
-      this.applyExifOrientationTransform(
-        context,
-        orientation,
-        img.width,
-        img.height
+      let width =
+        img.naturalWidth ||
+        img.width;
+
+      let height =
+        img.naturalHeight ||
+        img.height;
+
+      const largestDimension =
+        Math.max(
+          width,
+          height
+        );
+
+      const scale =
+        Math.min(
+          1,
+          MAX_SIZE / largestDimension
+        );
+
+      width =
+        Math.round(
+          width * scale
+        );
+
+      height =
+        Math.round(
+          height * scale
+        );
+
+      console.log(
+        'Canvas size:',
+        {
+          width,
+          height,
+          scale
+        }
       );
 
-      context.drawImage(img, 0, 0, img.width, img.height);
+      canvas.width = width;
+      canvas.height = height;
 
+      context.drawImage(
+        img,
+        0,
+        0,
+        width,
+        height
+      );
+
+      /*
+       * ==================================================
+       * CANVAS QR DECODING
+       * ==================================================
+       */
       try {
 
-        /**
-         * Decode QR.
-         */
         const result =
-          await this.codeReader.decodeFromCanvas(
-            canvas
-          );
+          await this.codeReader
+            .decodeFromCanvas(canvas);
 
         const qrText =
           result.getText();
 
         console.log(
-          'QR Code Text:',
+          'QR decoded from canvas:',
           qrText
         );
 
-        /**
-         * Validate QRIS BEFORE
-         * changing application state.
-         */
         const validationError =
           this.validateQrisFormat(qrText);
 
@@ -378,42 +449,28 @@ export class AppComponent {
             'error'
           );
 
-          // IMPORTANT:
-          // Do not touch generatedQrText.
-          // Do not touch originalQrText.
           return;
         }
 
-        /**
-         * Only assign originalQrText
-         * after validation succeeds.
+        /*
+         * Only update state after validation.
          */
-        this.originalQrText = qrText;
+        this.originalQrText =
+          qrText;
 
-        /**
-         * Generate new QR.
-         */
         this.replaceQrText();
 
-      } catch (error) {
+      } catch (canvasError) {
 
         console.error(
-          'Error decoding QR code:',
-          error
+          'Canvas QR decoding failed:',
+          canvasError
         );
 
-        /**
-         * This is expected when the image
-         * does not contain a readable QR code.
-         */
         this.showToast(
-          'Gambar tidak mengandung QR code yang bisa dibaca.',
+          'Gambar tidak mengandung QR code yang bisa dibaca. Pastikan seluruh QR terlihat jelas dan tidak blur.',
           'error'
         );
-
-        // IMPORTANT:
-        // Do not reset generatedQrText.
-        return;
       }
 
     } catch (error) {
@@ -428,69 +485,79 @@ export class AppComponent {
         'error'
       );
 
-      return;
-
     } finally {
 
-      URL.revokeObjectURL(
-        imageUrl
+      /*
+       * Release object URL.
+       */
+      URL.revokeObjectURL(imageUrl);
+    }
+  }
+
+  /**
+   * Load image and wait until it is completely loaded.
+   *
+   * Important:
+   *
+   * This fixes the old async onload flow where
+   * decodeQRCodeImage() could finish before img.onload.
+   */
+  private loadImage(
+    imageUrl: string
+  ): Promise<HTMLImageElement> {
+
+    return new Promise(
+      (resolve, reject) => {
+
+        const img =
+          new Image();
+
+        img.onload = () => {
+          resolve(img);
+        };
+
+        img.onerror = () => {
+          reject(
+            new Error(
+              'IMAGE_LOAD_ERROR'
+            )
+          );
+        };
+
+        img.src = imageUrl;
+      }
+    );
+  }
+
+  /**
+   * Validate raw QR text before replacing amount.
+   */
+  private runValidationAndReplace(): void {
+
+    if (!this.originalQrText) {
+      return;
+    }
+
+    const validationError =
+      this.validateQrisFormat(
+        this.originalQrText
       );
-    }
-  }
 
-  /**
-   * NEW - Wrapper terpisah untuk baca EXIF orientation.
-   * Dipisah dari decodeQRCodeImage supaya gampang di-mock di unit test
-   * (spyOn(component, 'getExifOrientation')) tanpa perlu spy ke ES module 'exifr'
-   * secara langsung, yang perilakunya bisa berbeda tergantung bundler/transpiler.
-   * Kalau file tidak punya EXIF (misal screenshot), fallback ke 1 (normal/tanpa rotasi).
-   */
-  private async getExifOrientation(file: File): Promise<number> {
-    try {
-      return (await exifr.orientation(file)) || 1;
-    } catch (exifError) {
-      console.log('Tidak ada EXIF orientation, pakai default (1).');
-      return 1;
-    }
-  }
+    if (validationError) {
 
-  /**
-   * NEW - Terapkan transform ke canvas context sesuai kode EXIF orientation
-   * (standar EXIF, nilai 1-8). Ini yang secara efektif "memutar balik"
-   * gambar ke posisi yang benar sebelum di-draw ke canvas.
-   */
-  private applyExifOrientationTransform(
-    ctx: CanvasRenderingContext2D,
-    orientation: number,
-    width: number,
-    height: number
-  ): void {
-    switch (orientation) {
-      case 2:
-        ctx.transform(-1, 0, 0, 1, width, 0);
-        break;
-      case 3:
-        ctx.transform(-1, 0, 0, -1, width, height);
-        break;
-      case 4:
-        ctx.transform(1, 0, 0, -1, 0, height);
-        break;
-      case 5:
-        ctx.transform(0, 1, 1, 0, 0, 0);
-        break;
-      case 6:
-        ctx.transform(0, 1, -1, 0, height, 0);
-        break;
-      case 7:
-        ctx.transform(0, -1, -1, 0, height, width);
-        break;
-      case 8:
-        ctx.transform(0, -1, 1, 0, 0, width);
-        break;
-      default:
-        // orientation 1 = normal, tidak perlu transform apa pun
-        break;
+      console.error(
+        validationError
+      );
+
+      this.showToast(
+        validationError,
+        'error'
+      );
+
+      return;
     }
+
+    this.replaceQrText();
   }
 
   /**
@@ -504,57 +571,46 @@ export class AppComponent {
       !qrText ||
       qrText.trim() === ''
     ) {
+
       return 'QR text kosong.';
     }
 
     const trimmed =
       qrText.trim();
 
-    /**
-     * Basic length check.
-     */
     if (trimmed.length < 20) {
+
       return 'QR text terlalu pendek, kemungkinan bukan QRIS yang valid.';
     }
 
-    /**
-     * Payload Format Indicator.
-     */
-    if (!trimmed.startsWith('000201')) {
+    if (
+      !trimmed.startsWith(
+        '000201'
+      )
+    ) {
+
       return 'Format QR tidak dikenali - Payload Format Indicator (tag 00) tidak sesuai.';
     }
 
-    /**
-     * QRIS should contain CRC at the end.
-     */
-    if (trimmed.length < 8) {
-      return 'QR tidak valid - data QR terlalu pendek.';
-    }
-
-    const crc =
-      trimmed.slice(-4);
-
-    if (!/^[0-9A-Fa-f]{4}$/.test(crc)) {
-      return 'QR tidak valid - CRC checksum (tag 63) tidak sesuai format.';
-    }
-
-    /**
+    /*
      * Remove CRC.
      */
     const withoutCrc =
       trimmed.slice(0, -4);
 
     const allTags =
-      this.parseAllTags(withoutCrc);
+      this.parseAllTags(
+        withoutCrc
+      );
 
-    /**
+    /*
      * Tag 01
-     * Point of Initiation Method
      */
     const tag01 =
       allTags.get('01');
 
     if (!tag01) {
+
       return 'QR tidak valid - Point of Initiation Method (tag 01) tidak ditemukan.';
     }
 
@@ -562,11 +618,12 @@ export class AppComponent {
       tag01.value !== '11' &&
       tag01.value !== '12'
     ) {
+
       return 'QR ini bukan format QRIS MPM (Point of Initiation Method tidak sesuai).';
     }
 
-    /**
-     * Merchant Account Information.
+    /*
+     * Merchant Account Information
      */
     const merchantAccountTags = [
       '02',
@@ -605,35 +662,38 @@ export class AppComponent {
       );
 
     if (!hasMerchantAccount) {
+
       return 'QR tidak valid - Merchant Account Information tidak ditemukan.';
     }
 
-    /**
+    /*
      * Tag 52
-     * Merchant Category Code.
      */
     if (!allTags.has('52')) {
+
       return 'QR tidak valid - Merchant Category Code (tag 52) tidak ditemukan.';
     }
 
-    /**
-     * Tag 53
-     * Transaction Currency.
+    /*
+     * Tag 53 - Currency
      */
     const tag53 =
       allTags.get('53');
 
     if (!tag53) {
+
       return 'QR tidak valid - tag mata uang (53) tidak ditemukan.';
     }
 
-    if (tag53.value !== '360') {
+    if (
+      tag53.value !== '360'
+    ) {
+
       return 'QR tidak valid - mata uang bukan Rupiah (kode currency harus 360).';
     }
 
-    /**
-     * Tag 58
-     * Country Code.
+    /*
+     * Tag 58 - Country
      */
     const tag58 =
       allTags.get('58');
@@ -642,12 +702,12 @@ export class AppComponent {
       !tag58 ||
       tag58.value !== 'ID'
     ) {
+
       return 'QR tidak valid - Country Code (tag 58) harus "ID".';
     }
 
-    /**
-     * Tag 59
-     * Merchant Name.
+    /*
+     * Tag 59 - Merchant Name
      */
     const tag59 =
       allTags.get('59');
@@ -656,12 +716,12 @@ export class AppComponent {
       !tag59 ||
       tag59.value.trim() === ''
     ) {
+
       return 'QR tidak valid - Merchant Name (tag 59) tidak ditemukan.';
     }
 
-    /**
-     * Tag 60
-     * Merchant City.
+    /*
+     * Tag 60 - Merchant City
      */
     const tag60 =
       allTags.get('60');
@@ -670,7 +730,21 @@ export class AppComponent {
       !tag60 ||
       tag60.value.trim() === ''
     ) {
+
       return 'QR tidak valid - Merchant City (tag 60) tidak ditemukan.';
+    }
+
+    /*
+     * CRC format
+     */
+    const crc =
+      trimmed.slice(-4);
+
+    if (
+      !/^[0-9A-Fa-f]{4}$/.test(crc)
+    ) {
+
+      return 'QR tidak valid - CRC checksum (tag 63) tidak sesuai format.';
     }
 
     return null;
@@ -694,7 +768,11 @@ export class AppComponent {
 
     for (const b of data) {
 
-      for (let i = 0; i < 8; i++) {
+      for (
+        let i = 0;
+        i < 8;
+        i++
+      ) {
 
         const bit =
           (b >> (7 - i)) & 1;
@@ -731,7 +809,8 @@ export class AppComponent {
     let index = 0;
 
     while (
-      index + 4 <= qrText.length
+      index <
+      qrText.length - 4
     ) {
 
       const currentTag =
@@ -746,34 +825,21 @@ export class AppComponent {
           index + 4
         );
 
-      /**
-       * Length must contain
-       * exactly numeric characters.
-       */
-      if (!/^\d{2}$/.test(lengthStr)) {
-        break;
-      }
-
       const length =
         parseInt(
           lengthStr,
           10
         );
 
+      if (isNaN(length)) {
+        break;
+      }
+
       const valueStart =
         index + 4;
 
       const valueEnd =
         valueStart + length;
-
-      /**
-       * Invalid/incomplete TLV.
-       */
-      if (
-        valueEnd > qrText.length
-      ) {
-        break;
-      }
 
       const value =
         qrText.substring(
@@ -799,7 +865,7 @@ export class AppComponent {
   }
 
   /**
-   * Replace or insert Tag 54.
+   * Replace or insert tag 54.
    */
   replaceQrText(): void {
 
@@ -815,11 +881,11 @@ export class AppComponent {
         ? this.newAmount.trim()
         : '0';
 
-    /**
-     * Remove existing CRC.
-     */
     const withoutCrc =
-      this.originalQrText.slice(0, -4);
+      this.originalQrText.slice(
+        0,
+        -4
+      );
 
     const allTags =
       this.parseAllTags(
@@ -839,23 +905,10 @@ export class AppComponent {
       return;
     }
 
-    /**
-     * Tag 54 = Transaction Amount.
-     */
     const tag = '54';
 
     const length =
       amount.length;
-
-    if (length > 99) {
-
-      this.showToast(
-        'Nominal terlalu panjang. Maksimal 99 karakter.',
-        'error'
-      );
-
-      return;
-    }
 
     const lengthStr =
       length < 10
@@ -872,13 +925,14 @@ export class AppComponent {
 
     let newQrText: string;
 
-    /**
-     * Update existing Tag 54.
+    /*
+     * Update existing tag 54.
      */
     if (existingTag54) {
 
       console.log(
-        'Tag 54 sudah ada, melakukan update.'
+        'Tag 54 sudah ada, melakukan update di posisi: ' +
+        existingTag54.start
       );
 
       newQrText =
@@ -893,11 +947,12 @@ export class AppComponent {
 
     } else {
 
-      /**
-       * Insert Tag 54 after Tag 53.
+      /*
+       * Insert new tag 54 after tag 53.
        */
       console.log(
-        'Tag 54 belum ada, insert setelah tag 53.'
+        'Tag 54 belum ada, insert baru setelah tag 53 berakhir di: ' +
+        tag53.valueEnd
       );
 
       newQrText =
@@ -908,49 +963,56 @@ export class AppComponent {
         );
     }
 
-    /**
+    console.log(
+      'QR tanpa CRC:',
+      newQrText
+    );
+
+    /*
      * Generate new CRC.
      */
     const checksum =
       this.generateChecksum(
-newQrText);
+        newQrText
+      );
 
-    /**
-     * Important:
-     * CRC is calculated over
-     * payload + "6304".
-     */
+    console.log(
+      'Checksum:',
+      checksum
+    );
+
     const finalQrText =
       newQrText +
       checksum;
 
     console.log(
-      'Generated QR:',
+      'Final QR:',
       finalQrText
     );
 
-    /**
-     * ONLY HERE do we update
-     * the generated QR.
+    /*
+     * Only update generatedQrText
+     * after everything succeeds.
      *
-     * Therefore errors before this
-     * point cannot make the result
-     * disappear.
+     * This prevents the result card
+     * from disappearing on errors.
      */
     this.generatedQrText =
       finalQrText;
 
-    /**
+    /*
      * Restart reveal animation.
      */
-    requestAnimationFrame(() => {
-      this.restartRevealAnimation();
-    });
+    requestAnimationFrame(
+      () => {
+        this.restartRevealAnimation();
+      }
+    );
   }
 
   /**
    * Restart QR reveal animation
-   * without destroying DOM.
+   * without destroying/recreating DOM.
    */
   private restartRevealAnimation(): void {
 
@@ -963,7 +1025,7 @@ newQrText);
 
     el.style.animation = 'none';
 
-    /**
+    /*
      * Force browser reflow.
      */
     void el.offsetWidth;
@@ -981,9 +1043,12 @@ newQrText);
   ): string {
 
     if (
-      index > originalString.length
+      index >
+      originalString.length
     ) {
-      index = originalString.length;
+
+      index =
+        originalString.length;
     }
 
     return (
@@ -992,9 +1057,7 @@ newQrText);
         index
       ) +
       stringToInsert +
-      originalString.slice(
-        index
-      )
+      originalString.slice(index)
     );
   }
 }
