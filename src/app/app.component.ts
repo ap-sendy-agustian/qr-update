@@ -270,16 +270,10 @@ export class AppComponent {
     try {
 
       /**
-       * NEW - baca EXIF orientation.
-       * Kalau file tidak punya EXIF (misal screenshot / gambar
-       * yang sudah di-strip metadata-nya), fallback ke 1 (normal).
+       * NEW - baca EXIF orientation lewat method terpisah (getExifOrientation),
+       * biar gampang di-mock di unit test tanpa perlu spy langsung ke ES module.
        */
-      let orientation = 1;
-      try {
-        orientation = (await exifr.orientation(file)) || 1;
-      } catch (exifError) {
-        console.log('Tidak ada EXIF orientation, pakai default (1).');
-      }
+      const orientation = await this.getExifOrientation(file);
 
       /**
        * Load image.
@@ -441,6 +435,22 @@ export class AppComponent {
       URL.revokeObjectURL(
         imageUrl
       );
+    }
+  }
+
+  /**
+   * NEW - Wrapper terpisah untuk baca EXIF orientation.
+   * Dipisah dari decodeQRCodeImage supaya gampang di-mock di unit test
+   * (spyOn(component, 'getExifOrientation')) tanpa perlu spy ke ES module 'exifr'
+   * secara langsung, yang perilakunya bisa berbeda tergantung bundler/transpiler.
+   * Kalau file tidak punya EXIF (misal screenshot), fallback ke 1 (normal/tanpa rotasi).
+   */
+  private async getExifOrientation(file: File): Promise<number> {
+    try {
+      return (await exifr.orientation(file)) || 1;
+    } catch (exifError) {
+      console.log('Tidak ada EXIF orientation, pakai default (1).');
+      return 1;
     }
   }
 
@@ -903,8 +913,7 @@ export class AppComponent {
      */
     const checksum =
       this.generateChecksum(
-        newQrText + '6304'
-      );
+newQrText);
 
     /**
      * Important:
@@ -913,7 +922,6 @@ export class AppComponent {
      */
     const finalQrText =
       newQrText +
-      '6304' +
       checksum;
 
     console.log(
