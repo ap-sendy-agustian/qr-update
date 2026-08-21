@@ -1,5 +1,6 @@
 import { Component, ElementRef, ViewChild } from '@angular/core';
 import { BrowserQRCodeReader } from '@zxing/browser';
+import * as exifr from 'exifr';
 
 interface TlvTag {
   tag: string;
@@ -248,6 +249,16 @@ export class AppComponent {
 
   /**
    * Decode QR code from uploaded image.
+   *
+   * NEW: membaca EXIF orientation dulu sebelum di-draw ke canvas.
+   * Ini penting khususnya untuk foto yang diambil langsung dari kamera HP,
+   * karena kamera HP biasanya menyimpan rotasi lewat metadata EXIF
+   * (bukan benar-benar memutar pixel-nya). Browser preview otomatis
+   * "menurut" metadata ini, tapi context.drawImage() di canvas
+   * MENGABAIKAN metadata itu - jadi versi canvas-nya bisa jadi
+   * miring 90/180/270 derajat dari yang terlihat di preview,
+   * dan itu yang bikin ZXing gagal decode QR-nya di mobile
+   * meskipun terlihat normal di layar.
    */
   async decodeQRCodeImage(
     file: File
@@ -257,6 +268,18 @@ export class AppComponent {
       URL.createObjectURL(file);
 
     try {
+
+      /**
+       * NEW - baca EXIF orientation.
+       * Kalau file tidak punya EXIF (misal screenshot / gambar
+       * yang sudah di-strip metadata-nya), fallback ke 1 (normal).
+       */
+      let orientation = 1;
+      try {
+        orientation = (await exifr.orientation(file)) || 1;
+      } catch (exifError) {
+        console.log('Tidak ada EXIF orientation, pakai default (1).');
+      }
 
       /**
        * Load image.
@@ -303,16 +326,27 @@ export class AppComponent {
         return;
       }
 
-      canvas.width = img.width;
-      canvas.height = img.height;
+      /**
+       * NEW - kalau orientasi butuh rotasi 90/270 derajat (nilai 5-8),
+       * width & height canvas harus di-swap supaya gambar hasil
+       * rotasi tidak terpotong.
+       */
+      const needsSwap = orientation >= 5 && orientation <= 8;
+      canvas.width = needsSwap ? img.height : img.width;
+      canvas.height = needsSwap ? img.width : img.height;
 
-      context.drawImage(
-        img,
-        0,
-        0,
+      /**
+       * NEW - terapkan transform sesuai EXIF orientation
+       * SEBELUM drawImage dipanggil.
+       */
+      this.applyExifOrientationTransform(
+        context,
+        orientation,
         img.width,
         img.height
       );
+
+      context.drawImage(img, 0, 0, img.width, img.height);
 
       try {
 
@@ -407,6 +441,45 @@ export class AppComponent {
       URL.revokeObjectURL(
         imageUrl
       );
+    }
+  }
+
+  /**
+   * NEW - Terapkan transform ke canvas context sesuai kode EXIF orientation
+   * (standar EXIF, nilai 1-8). Ini yang secara efektif "memutar balik"
+   * gambar ke posisi yang benar sebelum di-draw ke canvas.
+   */
+  private applyExifOrientationTransform(
+    ctx: CanvasRenderingContext2D,
+    orientation: number,
+    width: number,
+    height: number
+  ): void {
+    switch (orientation) {
+      case 2:
+        ctx.transform(-1, 0, 0, 1, width, 0);
+        break;
+      case 3:
+        ctx.transform(-1, 0, 0, -1, width, height);
+        break;
+      case 4:
+        ctx.transform(1, 0, 0, -1, 0, height);
+        break;
+      case 5:
+        ctx.transform(0, 1, 1, 0, 0, 0);
+        break;
+      case 6:
+        ctx.transform(0, 1, -1, 0, height, 0);
+        break;
+      case 7:
+        ctx.transform(0, -1, -1, 0, height, width);
+        break;
+      case 8:
+        ctx.transform(0, -1, 1, 0, 0, width);
+        break;
+      default:
+        // orientation 1 = normal, tidak perlu transform apa pun
+        break;
     }
   }
 
