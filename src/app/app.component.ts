@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, HostBinding, Renderer2, ViewChild, ElementRef } from '@angular/core';
 import { BrowserQRCodeReader } from '@zxing/browser';
 
 interface TlvTag {
@@ -17,9 +17,44 @@ interface TlvTag {
 export class AppComponent {
   codeReader: BrowserQRCodeReader;
 
-  constructor() {
+  constructor(private renderer: Renderer2) {
     this.codeReader = new BrowserQRCodeReader();
   }
+
+  darkMode: boolean = false;
+  showCopyToast = false;
+
+  // NEW - referensi elemen buat restart animasi tanpa perlu destroy/recreate DOM
+  @ViewChild('qrReveal') qrRevealRef?: ElementRef<HTMLDivElement>;
+
+  // NEW - biar :host(.dark-mode) di CSS component ini bisa nge-trigger override variabel warna
+  @HostBinding('class.dark-mode') get isDarkModeHostClass(): boolean {
+    return this.darkMode;
+  }
+
+  toggleDarkMode(): void {
+    this.darkMode = !this.darkMode;
+    // body juga perlu di-toggle manual karena background body didefinisikan di styles.css (global),
+    // bukan di dalam scope component ini
+    if (this.darkMode) {
+      this.renderer.addClass(document.body, 'dark-mode');
+    } else {
+      this.renderer.removeClass(document.body, 'dark-mode');
+    }
+  }
+
+  removeSelectedFile(): void {
+  this.selectedFile = null;
+  this.errorMessage = '';
+
+  const fileInput = document.getElementById(
+    'fileUpload'
+  ) as HTMLInputElement;
+
+  if (fileInput) {
+    fileInput.value = '';
+  }
+}
 
   title = 'qr-update';
   selectedFile: File | null = null;
@@ -29,6 +64,28 @@ export class AppComponent {
   newAmount: string = '';
   rawQrText: string = '';
   errorMessage: string = ''; // NEW - nampilin pesan error validasi di UI
+  copiedFeedback: boolean = false; // NEW - feedback visual sesaat setelah copy berhasil
+
+  async copyToClipboard(): Promise<void> {
+  if (!this.generatedQrText) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(this.generatedQrText);
+
+    this.copiedFeedback = true;
+    this.showCopyToast = true;
+
+    setTimeout(() => {
+      this.copiedFeedback = false;
+      this.showCopyToast = false;
+    }, 2000);
+
+  } catch (error) {
+    console.error('Failed to copy QR text:', error);
+  }
+}
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -53,7 +110,6 @@ export class AppComponent {
    */
   async generate(): Promise<void> {
     this.errorMessage = '';
-    this.generatedQrText = null;
 
     if (this.selectedFile) {
       console.log('Sumber input: gambar (' + this.selectedFile.name + ')');
@@ -290,9 +346,30 @@ export class AppComponent {
       console.log('yang baru : ' + newQrText);
       const checksum = this.generateChecksum(newQrText);
       console.log('checksum nya :' + checksum);
-      this.generatedQrText = newQrText + checksum;
-      console.log('new nya :' + this.generatedQrText);
+      const finalQrText = newQrText + checksum;
+      console.log('new nya :' + finalQrText);
+
+      // FIX: assign langsung (tidak di-null-in dulu) supaya tidak ada flash
+      // ke state kosong. Animasi tetap di-restart tiap generate lewat
+      // reflow trick di restartRevealAnimation(), bukan lewat unmount/remount DOM.
+      this.generatedQrText = finalQrText;
+      requestAnimationFrame(() => this.restartRevealAnimation());
     }
+  }
+
+  /**
+   * NEW - Restart animasi CSS tanpa unmount elemen (menghindari flash).
+   * Trik: set animation ke 'none', paksa reflow (baca offsetWidth),
+   * baru kembalikan animation-nya - ini bikin browser replay animasi dari awal
+   * meski elemennya sendiri tidak pernah dihapus dari DOM.
+   */
+  private restartRevealAnimation(): void {
+    const el = this.qrRevealRef?.nativeElement;
+    if (!el) return;
+
+    el.style.animation = 'none';
+    void el.offsetWidth; // force reflow - baris ini WAJIB ada, jangan dihapus
+    el.style.animation = '';
   }
 
   insertStringAt(originalString: string, stringToInsert: string, index: number) {

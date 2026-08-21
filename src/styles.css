@@ -1,49 +1,212 @@
+/* ----------------------------------------------
+ * styles.css class
+ * ---------------------------------------------- */
 * {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
+
   height: 100%;
+
+  overflow: hidden;
 }
+
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-y: auto;
+
+    height: auto;
+  }
+}
+
+/* ----------------------------------------------
+ * Background
+ * ---------------------------------------------- */
 
 body {
   background: #fef3c7;
-  background-image: radial-gradient(circle, #00000015 1px, transparent 1px);
-  background-size: 20px 20px;
+
   min-height: 100vh;
+
   font-family: 'Space Grotesk', sans-serif;
+
+  transition: background 0.3s ease;
+
+  position: relative;
 }
 
+/* ----------------------------------------------
+ * Animated gradient background
+ * ---------------------------------------------- */
 
-/* Scrollbar neobrutalism — Chrome, Edge, Safari */
+body::before {
+  content: '';
+
+  position: fixed;
+
+  inset: 0;
+
+  z-index: -2;
+
+  pointer-events: none;
+
+  background: linear-gradient(
+    90deg,
+    #fef3c7 0%,
+    #fde047 25%,
+    #f9a8d4 50%,
+    #86efac 75%,
+    #fef3c7 100%
+  );
+
+  background-size: 300% 100%;
+
+ animation: bg-pan-left 18s ease-in-out infinite alternate;
+}
+
+/* ----------------------------------------------
+ * Dot pattern
+ * ---------------------------------------------- */
+
+body::after {
+  content: '';
+
+  position: fixed;
+
+  inset: 0;
+
+  z-index: -1;
+
+  pointer-events: none;
+
+  background-image: radial-gradient(
+    circle,
+    #00000015 1px,
+    transparent 1px
+  );
+
+  background-size: 20px 20px;
+}
+
+/* ----------------------------------------------
+ * Background pan animation
+ * ---------------------------------------------- */
+
+@keyframes bg-pan-left {
+  from {
+    background-position: 100% 50%;
+  }
+
+  to {
+    background-position: 0% 50%;
+  }
+}
+/* ----------------------------------------------
+ * Dark mode
+ * ---------------------------------------------- */
+
+body.dark-mode {
+  background: #1c1e22;
+
+  transition: background 0.3s ease;
+}
+
+body.dark-mode::before {
+  background: linear-gradient(
+    90deg,
+    #1c1e22 0%,
+    #2f3e4e 30%,
+    #6e5568 55%,
+    #4d6357 75%,
+    #1c1e22 100%
+  );
+
+  background-size: 300% 100%;
+}
+
+body.dark-mode::after {
+  background-image: radial-gradient(
+    circle,
+    #ffffff10 1px,
+    transparent 1px
+  );
+
+  background-size: 20px 20px;
+}
+
+/* ----------------------------------------------
+ * Dark mode scrollbar
+ * ---------------------------------------------- */
+
+body.dark-mode ::-webkit-scrollbar-track {
+  background: #1c1e22;
+
+  border-left: 3px solid #d9c08a;
+}
+
+body.dark-mode ::-webkit-scrollbar-thumb {
+  background: #5b7c99;
+
+  border: 3px solid #d9c08a;
+}
+
+body.dark-mode ::-webkit-scrollbar-corner {
+  background: #1c1e22;
+}
+
+/* ----------------------------------------------
+ * Scrollbar - Neo Brutalism
+ * ---------------------------------------------- */
+
 ::-webkit-scrollbar {
   width: 14px;
+
   height: 14px;
 }
- 
+
 ::-webkit-scrollbar-track {
   background: #fef3c7;
+
   border-left: 3px solid #000;
 }
- 
+
 ::-webkit-scrollbar-thumb {
   background: #60a5fa;
+
   border: 3px solid #000;
+
   border-radius: 0;
 }
- 
+
 ::-webkit-scrollbar-thumb:hover {
   background: #fde047;
 }
- 
+
 ::-webkit-scrollbar-corner {
   background: #fef3c7;
 }
- 
-/* Scrollbar neobrutalism — Firefox */
+
+/* ----------------------------------------------
+ * Firefox scrollbar
+ * ---------------------------------------------- */
+
 * {
   scrollbar-width: auto;
+
   scrollbar-color: #60a5fa #fef3c7;
+}
+
+/* ----------------------------------------------
+ * Reduced motion
+ * ---------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
 }
