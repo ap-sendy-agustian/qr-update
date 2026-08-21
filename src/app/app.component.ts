@@ -1,4 +1,4 @@
-import { Component, ViewChild, ElementRef } from '@angular/core';
+import { Component, ElementRef, ViewChild } from '@angular/core';
 import { BrowserQRCodeReader } from '@zxing/browser';
 
 interface TlvTag {
@@ -15,241 +15,612 @@ interface TlvTag {
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
+
+  title = 'qr-update';
+
   codeReader: BrowserQRCodeReader;
+
+  selectedFile: File | null = null;
+  imageSrc: string | ArrayBuffer | null = null;
+
+  originalQrText: string | null = null;
+  generatedQrText: string | null = null;
+
+  newAmount = '';
+  rawQrText = '';
+
+  copiedFeedback = false;
+
+  // Toast
+  showCopyToast = false;
+  toastMessage = '';
+  toastType: 'success' | 'error' = 'success';
+
+  private toastTimeout?: ReturnType<typeof setTimeout>;
+
+  // Prevent multiple generate/decode at the same time
+  isGenerating = false;
+
+  @ViewChild('qrReveal')
+  qrRevealRef?: ElementRef<HTMLDivElement>;
 
   constructor() {
     this.codeReader = new BrowserQRCodeReader();
   }
 
-  showCopyToast = false;
-
-  // NEW - referensi elemen buat restart animasi tanpa perlu destroy/recreate DOM
-  @ViewChild('qrReveal') qrRevealRef?: ElementRef<HTMLDivElement>;
-
-
+  /**
+   * Remove uploaded file.
+   */
   removeSelectedFile(): void {
-  this.selectedFile = null;
-  this.errorMessage = '';
+    this.selectedFile = null;
+    this.imageSrc = null;
 
-  const fileInput = document.getElementById(
-    'fileUpload'
-  ) as HTMLInputElement;
+    const fileInput = document.getElementById(
+      'fileUpload'
+    ) as HTMLInputElement;
 
-  if (fileInput) {
-    fileInput.value = '';
-  }
-}
-
-  title = 'qr-update';
-  selectedFile: File | null = null;
-  imageSrc: string | ArrayBuffer | null = null;
-  originalQrText: string | null = null;
-  generatedQrText: string | null = null;
-  newAmount: string = '';
-  rawQrText: string = '';
-  errorMessage: string = ''; // NEW - nampilin pesan error validasi di UI
-  copiedFeedback: boolean = false; // NEW - feedback visual sesaat setelah copy berhasil
-
-  async copyToClipboard(): Promise<void> {
-  if (!this.generatedQrText) {
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(this.generatedQrText);
-
-    this.copiedFeedback = true;
-    this.showCopyToast = true;
-
-    setTimeout(() => {
-      this.copiedFeedback = false;
-      this.showCopyToast = false;
-    }, 2000);
-
-  } catch (error) {
-    console.error('Failed to copy QR text:', error);
-  }
-}
-
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-      this.selectedFile = input.files[0];
-      const file = input.files[0];
-      this.readImage(file);
+    if (fileInput) {
+      fileInput.value = '';
     }
   }
 
+  /**
+   * Show toast message.
+   */
+  private showToast(
+    message: string,
+    type: 'success' | 'error' = 'success'
+  ): void {
+    this.toastMessage = message;
+    this.toastType = type;
+    this.showCopyToast = true;
+
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+    }
+
+    this.toastTimeout = setTimeout(() => {
+      this.showCopyToast = false;
+    }, 2500);
+  }
+
+  /**
+   * Copy generated QR text.
+   */
+  async copyToClipboard(): Promise<void> {
+    if (!this.generatedQrText) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(this.generatedQrText);
+
+      this.copiedFeedback = true;
+
+      this.showToast(
+        'QR text berhasil di-copy!',
+        'success'
+      );
+
+      setTimeout(() => {
+        this.copiedFeedback = false;
+      }, 2000);
+
+    } catch (error) {
+      console.error(
+        'Failed to copy QR text:',
+        error
+      );
+
+      this.showToast(
+        'Gagal copy QR text.',
+        'error'
+      );
+    }
+  }
+
+  /**
+   * File selected.
+   */
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+
+    if (!input.files || input.files.length === 0) {
+      return;
+    }
+
+    const file = input.files[0];
+
+    this.selectedFile = file;
+
+    this.readImage(file);
+  }
+
+  /**
+   * Read uploaded image for preview.
+   */
   private readImage(file: File): void {
     const reader = new FileReader();
+
     reader.onload = () => {
       this.imageSrc = reader.result;
     };
+
+    reader.onerror = () => {
+      this.showToast(
+        'Gagal membaca gambar.',
+        'error'
+      );
+    };
+
     reader.readAsDataURL(file);
   }
 
   /**
-   * NEW - Method generate terpadu, gantiin 2 tombol lama (duar() & useRawQrText()).
-   * Otomatis deteksi sumber input: file diprioritaskan, fallback ke raw text.
+   * Main generate method.
+   *
+   * Image has priority.
+   * Raw QR text is used only when no image is selected.
    */
   async generate(): Promise<void> {
-    this.errorMessage = '';
 
-    if (this.selectedFile) {
-      console.log('Sumber input: gambar (' + this.selectedFile.name + ')');
-      await this.decodeQRCodeImage(this.selectedFile);
-    } else if (this.rawQrText && this.rawQrText.trim() !== '') {
-      console.log('Sumber input: raw QR text');
-      this.originalQrText = this.rawQrText.trim();
-      this.runValidationAndReplace(); // NEW
-    } else {
-      this.errorMessage = 'Upload gambar QR atau paste QR text dulu sebelum generate.';
-    }
-  }
-
-  async decodeQRCodeImage(file: File): Promise<void> {
-    const imageUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = imageUrl;
-
-    img.onload = async () => {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-
-      if (context) {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        context.drawImage(img, 0, 0, img.width, img.height);
-
-        try {
-          const result = await this.codeReader.decodeFromCanvas(canvas);
-          console.log('QR Code Text:', result.getText());
-          this.originalQrText = result.getText();
-          this.runValidationAndReplace(); // CHANGED - sebelumnya langsung this.replaceQrText()
-        } catch (error) {
-          // NEW - sebelumnya cuma console.error, sekarang tampil di UI juga
-          this.errorMessage = 'Gambar tidak mengandung QR code yang bisa dibaca. Pastikan gambar jelas dan tidak terpotong.';
-          console.error('Error decoding QR code:', error);
-        }
-      }
-    };
-
-    img.onerror = () => {
-      // NEW
-      this.errorMessage = 'Gagal memuat gambar. Pastikan file yang diupload adalah gambar yang valid.';
-    };
-  }
-
-  /**
-   * NEW - jalanin validasi dulu sebelum replaceQrText().
-   * Kalau validasi gagal, generatedQrText tidak diisi & error ditampilkan.
-   */
-  private runValidationAndReplace(): void {
-    if (!this.originalQrText) return;
-
-    const validationError = this.validateQrisFormat(this.originalQrText);
-    if (validationError) {
-      this.errorMessage = validationError;
-      console.error(validationError);
+    // Prevent multiple generate requests
+    // while the image is still being decoded.
+    if (this.isGenerating) {
       return;
     }
 
-    this.replaceQrText();
+    this.isGenerating = true;
+
+    try {
+
+      /**
+       * IMAGE HAS PRIORITY
+       */
+      if (this.selectedFile) {
+
+        console.log(
+          'Sumber input: gambar (' +
+          this.selectedFile.name +
+          ')'
+        );
+
+        await this.decodeQRCodeImage(
+          this.selectedFile
+        );
+
+        return;
+      }
+
+      /**
+       * FALLBACK TO RAW TEXT
+       */
+      if (
+        this.rawQrText &&
+        this.rawQrText.trim() !== ''
+      ) {
+
+        console.log(
+          'Sumber input: raw QR text'
+        );
+
+        const qrText =
+          this.rawQrText.trim();
+
+        const validationError =
+          this.validateQrisFormat(qrText);
+
+        if (validationError) {
+
+          console.error(
+            validationError
+          );
+
+          this.showToast(
+            validationError,
+            'error'
+          );
+
+          return;
+        }
+
+        // Only update original QR after
+        // validation succeeds.
+        this.originalQrText = qrText;
+
+        this.replaceQrText();
+
+        return;
+      }
+
+      /**
+       * NOTHING SELECTED
+       */
+      this.showToast(
+        'Upload gambar QR atau paste QR text terlebih dahulu.',
+        'error'
+      );
+
+    } finally {
+      this.isGenerating = false;
+    }
   }
 
   /**
-   * NEW - Validasi struktur QRIS khusus format MPM (Merchant Presented Mode).
-   * Return null kalau valid, atau pesan error kalau tidak valid.
+   * Decode QR code from uploaded image.
    */
-  private validateQrisFormat(qrText: string): string | null {
-    if (!qrText || qrText.trim() === '') {
+  async decodeQRCodeImage(
+    file: File
+  ): Promise<void> {
+
+    const imageUrl =
+      URL.createObjectURL(file);
+
+    try {
+
+      /**
+       * Load image.
+       */
+      const img =
+        await new Promise<HTMLImageElement>(
+          (resolve, reject) => {
+
+            const image =
+              new Image();
+
+            image.onload = () => {
+              resolve(image);
+            };
+
+            image.onerror = () => {
+              reject(
+                new Error(
+                  'IMAGE_LOAD_ERROR'
+                )
+              );
+            };
+
+            image.src = imageUrl;
+          }
+        );
+
+      /**
+       * Create canvas.
+       */
+      const canvas =
+        document.createElement('canvas');
+
+      const context =
+        canvas.getContext('2d');
+
+      if (!context) {
+
+        this.showToast(
+          'Gagal memproses gambar.',
+          'error'
+        );
+
+        return;
+      }
+
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      context.drawImage(
+        img,
+        0,
+        0,
+        img.width,
+        img.height
+      );
+
+      try {
+
+        /**
+         * Decode QR.
+         */
+        const result =
+          await this.codeReader.decodeFromCanvas(
+            canvas
+          );
+
+        const qrText =
+          result.getText();
+
+        console.log(
+          'QR Code Text:',
+          qrText
+        );
+
+        /**
+         * Validate QRIS BEFORE
+         * changing application state.
+         */
+        const validationError =
+          this.validateQrisFormat(qrText);
+
+        if (validationError) {
+
+          console.error(
+            validationError
+          );
+
+          this.showToast(
+            validationError,
+            'error'
+          );
+
+          // IMPORTANT:
+          // Do not touch generatedQrText.
+          // Do not touch originalQrText.
+          return;
+        }
+
+        /**
+         * Only assign originalQrText
+         * after validation succeeds.
+         */
+        this.originalQrText = qrText;
+
+        /**
+         * Generate new QR.
+         */
+        this.replaceQrText();
+
+      } catch (error) {
+
+        console.error(
+          'Error decoding QR code:',
+          error
+        );
+
+        /**
+         * This is expected when the image
+         * does not contain a readable QR code.
+         */
+        this.showToast(
+          'Gambar tidak mengandung QR code yang bisa dibaca.',
+          'error'
+        );
+
+        // IMPORTANT:
+        // Do not reset generatedQrText.
+        return;
+      }
+
+    } catch (error) {
+
+      console.error(
+        'Error loading image:',
+        error
+      );
+
+      this.showToast(
+        'Gagal memuat gambar. Pastikan file yang diupload adalah gambar yang valid.',
+        'error'
+      );
+
+      return;
+
+    } finally {
+
+      URL.revokeObjectURL(
+        imageUrl
+      );
+    }
+  }
+
+  /**
+   * Validate QRIS MPM structure.
+   */
+  private validateQrisFormat(
+    qrText: string
+  ): string | null {
+
+    if (
+      !qrText ||
+      qrText.trim() === ''
+    ) {
       return 'QR text kosong.';
     }
 
-    const trimmed = qrText.trim();
+    const trimmed =
+      qrText.trim();
 
+    /**
+     * Basic length check.
+     */
     if (trimmed.length < 20) {
       return 'QR text terlalu pendek, kemungkinan bukan QRIS yang valid.';
     }
 
+    /**
+     * Payload Format Indicator.
+     */
     if (!trimmed.startsWith('000201')) {
       return 'Format QR tidak dikenali - Payload Format Indicator (tag 00) tidak sesuai.';
     }
 
-    const withoutCrc = trimmed.slice(0, -4);
-    const allTags = this.parseAllTags(withoutCrc);
+    /**
+     * QRIS should contain CRC at the end.
+     */
+    if (trimmed.length < 8) {
+      return 'QR tidak valid - data QR terlalu pendek.';
+    }
 
-    // let reconstructedLength = 0;
-    // for (const t of allTags.values()) {
-    //   reconstructedLength += (t.valueEnd - t.start);
-    // }
-    // if (reconstructedLength !== withoutCrc.length || allTags.size === 0) {
-    //   return 'Struktur QR tidak valid - format TLV rusak atau tidak lengkap.';
-    // }
+    const crc =
+      trimmed.slice(-4);
 
-    const tag01 = allTags.get('01');
+    if (!/^[0-9A-Fa-f]{4}$/.test(crc)) {
+      return 'QR tidak valid - CRC checksum (tag 63) tidak sesuai format.';
+    }
+
+    /**
+     * Remove CRC.
+     */
+    const withoutCrc =
+      trimmed.slice(0, -4);
+
+    const allTags =
+      this.parseAllTags(withoutCrc);
+
+    /**
+     * Tag 01
+     * Point of Initiation Method
+     */
+    const tag01 =
+      allTags.get('01');
+
     if (!tag01) {
       return 'QR tidak valid - Point of Initiation Method (tag 01) tidak ditemukan.';
     }
-    if (tag01.value !== '11' && tag01.value !== '12') {
+
+    if (
+      tag01.value !== '11' &&
+      tag01.value !== '12'
+    ) {
       return 'QR ini bukan format QRIS MPM (Point of Initiation Method tidak sesuai).';
     }
 
+    /**
+     * Merchant Account Information.
+     */
     const merchantAccountTags = [
-      '02', '04', '26', '27', '28', '29', '30', '31', '32', '33', '34',
-      '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45',
-      '46', '47', '48', '49', '50', '51'
+      '02',
+      '04',
+      '26',
+      '27',
+      '28',
+      '29',
+      '30',
+      '31',
+      '32',
+      '33',
+      '34',
+      '35',
+      '36',
+      '37',
+      '38',
+      '39',
+      '40',
+      '41',
+      '42',
+      '43',
+      '44',
+      '45',
+      '46',
+      '47',
+      '48',
+      '49',
+      '50',
+      '51'
     ];
-    const hasMerchantAccount = merchantAccountTags.some(t => allTags.has(t));
+
+    const hasMerchantAccount =
+      merchantAccountTags.some(
+        tag => allTags.has(tag)
+      );
+
     if (!hasMerchantAccount) {
       return 'QR tidak valid - Merchant Account Information tidak ditemukan.';
     }
 
+    /**
+     * Tag 52
+     * Merchant Category Code.
+     */
     if (!allTags.has('52')) {
       return 'QR tidak valid - Merchant Category Code (tag 52) tidak ditemukan.';
     }
 
-    const tag53 = allTags.get('53');
+    /**
+     * Tag 53
+     * Transaction Currency.
+     */
+    const tag53 =
+      allTags.get('53');
+
     if (!tag53) {
       return 'QR tidak valid - tag mata uang (53) tidak ditemukan.';
     }
+
     if (tag53.value !== '360') {
       return 'QR tidak valid - mata uang bukan Rupiah (kode currency harus 360).';
     }
 
-    const tag58 = allTags.get('58');
-    if (!tag58 || tag58.value !== 'ID') {
+    /**
+     * Tag 58
+     * Country Code.
+     */
+    const tag58 =
+      allTags.get('58');
+
+    if (
+      !tag58 ||
+      tag58.value !== 'ID'
+    ) {
       return 'QR tidak valid - Country Code (tag 58) harus "ID".';
     }
 
-    const tag59 = allTags.get('59');
-    if (!tag59 || tag59.value.trim() === '') {
+    /**
+     * Tag 59
+     * Merchant Name.
+     */
+    const tag59 =
+      allTags.get('59');
+
+    if (
+      !tag59 ||
+      tag59.value.trim() === ''
+    ) {
       return 'QR tidak valid - Merchant Name (tag 59) tidak ditemukan.';
     }
 
-    const tag60 = allTags.get('60');
-    if (!tag60 || tag60.value.trim() === '') {
-      return 'QR tidak valid - Merchant City (tag 60) tidak ditemukan.';
-    }
+    /**
+     * Tag 60
+     * Merchant City.
+     */
+    const tag60 =
+      allTags.get('60');
 
-    const crc = trimmed.slice(-4);
-    if (!/^[0-9A-Fa-f]{4}$/.test(crc)) {
-      return 'QR tidak valid - CRC checksum (tag 63) tidak sesuai format.';
+    if (
+      !tag60 ||
+      tag60.value.trim() === ''
+    ) {
+      return 'QR tidak valid - Merchant City (tag 60) tidak ditemukan.';
     }
 
     return null;
   }
 
-  generateChecksum(payload: string) {
+  /**
+   * Generate CRC16 checksum.
+   */
+  generateChecksum(
+    payload: string
+  ): string {
+
     let checksum = 0xffff;
+
     const polynomial = 0x1021;
-    const data = new TextEncoder().encode(payload);
+
+    const data =
+      new TextEncoder().encode(
+        payload
+      );
 
     for (const b of data) {
+
       for (let i = 0; i < 8; i++) {
-        const bit = (b >> (7 - i)) & 1;
-        const c15 = (checksum >> 15) & 1;
+
+        const bit =
+          (b >> (7 - i)) & 1;
+
+        const c15 =
+          (checksum >> 15) & 1;
+
         checksum <<= 1;
+
         if (c15 ^ bit) {
           checksum ^= polynomial;
         }
@@ -257,36 +628,86 @@ export class AppComponent {
     }
 
     checksum &= 0xffff;
-    return checksum.toString(16).toUpperCase().padStart(4, '0');
+
+    return checksum
+      .toString(16)
+      .toUpperCase()
+      .padStart(4, '0');
   }
 
   /**
-   * Parse seluruh QRIS jadi map of tag -> posisi & value-nya.
+   * Parse QRIS TLV structure.
    */
-  private parseAllTags(qrText: string): Map<string, TlvTag> {
-    const tags = new Map<string, TlvTag>();
+  private parseAllTags(
+    qrText: string
+  ): Map<string, TlvTag> {
+
+    const tags =
+      new Map<string, TlvTag>();
+
     let index = 0;
 
-    while (index < qrText.length - 4) {
-      const currentTag = qrText.substring(index, index + 2);
-      const lengthStr = qrText.substring(index + 2, index + 4);
-      const length = parseInt(lengthStr, 10);
+    while (
+      index + 4 <= qrText.length
+    ) {
 
-      if (isNaN(length)) {
+      const currentTag =
+        qrText.substring(
+          index,
+          index + 2
+        );
+
+      const lengthStr =
+        qrText.substring(
+          index + 2,
+          index + 4
+        );
+
+      /**
+       * Length must contain
+       * exactly numeric characters.
+       */
+      if (!/^\d{2}$/.test(lengthStr)) {
         break;
       }
 
-      const valueStart = index + 4;
-      const valueEnd = valueStart + length;
-      const value = qrText.substring(valueStart, valueEnd);
+      const length =
+        parseInt(
+          lengthStr,
+          10
+        );
 
-      tags.set(currentTag, {
-        tag: currentTag,
-        start: index,
-        valueStart,
-        valueEnd,
-        value,
-      });
+      const valueStart =
+        index + 4;
+
+      const valueEnd =
+        valueStart + length;
+
+      /**
+       * Invalid/incomplete TLV.
+       */
+      if (
+        valueEnd > qrText.length
+      ) {
+        break;
+      }
+
+      const value =
+        qrText.substring(
+          valueStart,
+          valueEnd
+        );
+
+      tags.set(
+        currentTag,
+        {
+          tag: currentTag,
+          start: index,
+          valueStart,
+          valueEnd,
+          value
+        }
+      );
 
       index = valueEnd;
     }
@@ -294,72 +715,205 @@ export class AppComponent {
     return tags;
   }
 
-  replaceQrText() {
-    if (this.originalQrText != null) {
-      const amount = this.newAmount && this.newAmount.trim() !== '' ? this.newAmount.trim() : '0';
+  /**
+   * Replace or insert Tag 54.
+   */
+  replaceQrText(): void {
 
-      const withoutCrc = this.originalQrText.slice(0, -4);
-      const allTags = this.parseAllTags(withoutCrc);
-
-      const tag53 = allTags.get('53');
-      if (!tag53) {
-        // Safety net - seharusnya sudah kefilter di validateQrisFormat
-        this.errorMessage = 'QR tidak valid - tag mata uang (53) tidak ditemukan.';
-        return;
-      }
-
-      const tag = '54';
-      const length = amount.length;
-      const lengthStr = length < 10 ? `0${length}` : length.toString();
-      const tlv = tag + lengthStr + amount;
-
-      const existingTag54 = allTags.get('54');
-      let newQrText: string;
-
-      if (existingTag54) {
-        console.log('Tag 54 sudah ada, melakukan update di posisi: ' + existingTag54.start);
-        newQrText =
-          withoutCrc.slice(0, existingTag54.start) +
-          tlv +
-          withoutCrc.slice(existingTag54.valueEnd);
-      } else {
-        console.log('Tag 54 belum ada, insert baru setelah tag 53 berakhir di: ' + tag53.valueEnd);
-        newQrText = this.insertStringAt(withoutCrc, tlv, tag53.valueEnd);
-      }
-
-      console.log('yang baru : ' + newQrText);
-      const checksum = this.generateChecksum(newQrText);
-      console.log('checksum nya :' + checksum);
-      const finalQrText = newQrText + checksum;
-      console.log('new nya :' + finalQrText);
-
-      // FIX: assign langsung (tidak di-null-in dulu) supaya tidak ada flash
-      // ke state kosong. Animasi tetap di-restart tiap generate lewat
-      // reflow trick di restartRevealAnimation(), bukan lewat unmount/remount DOM.
-      this.generatedQrText = finalQrText;
-      requestAnimationFrame(() => this.restartRevealAnimation());
+    if (
+      this.originalQrText == null
+    ) {
+      return;
     }
+
+    const amount =
+      this.newAmount &&
+      this.newAmount.trim() !== ''
+        ? this.newAmount.trim()
+        : '0';
+
+    /**
+     * Remove existing CRC.
+     */
+    const withoutCrc =
+      this.originalQrText.slice(0, -4);
+
+    const allTags =
+      this.parseAllTags(
+        withoutCrc
+      );
+
+    const tag53 =
+      allTags.get('53');
+
+    if (!tag53) {
+
+      this.showToast(
+        'QR tidak valid - tag mata uang (53) tidak ditemukan.',
+        'error'
+      );
+
+      return;
+    }
+
+    /**
+     * Tag 54 = Transaction Amount.
+     */
+    const tag = '54';
+
+    const length =
+      amount.length;
+
+    if (length > 99) {
+
+      this.showToast(
+        'Nominal terlalu panjang. Maksimal 99 karakter.',
+        'error'
+      );
+
+      return;
+    }
+
+    const lengthStr =
+      length < 10
+        ? `0${length}`
+        : length.toString();
+
+    const tlv =
+      tag +
+      lengthStr +
+      amount;
+
+    const existingTag54 =
+      allTags.get('54');
+
+    let newQrText: string;
+
+    /**
+     * Update existing Tag 54.
+     */
+    if (existingTag54) {
+
+      console.log(
+        'Tag 54 sudah ada, melakukan update.'
+      );
+
+      newQrText =
+        withoutCrc.slice(
+          0,
+          existingTag54.start
+        ) +
+        tlv +
+        withoutCrc.slice(
+          existingTag54.valueEnd
+        );
+
+    } else {
+
+      /**
+       * Insert Tag 54 after Tag 53.
+       */
+      console.log(
+        'Tag 54 belum ada, insert setelah tag 53.'
+      );
+
+      newQrText =
+        this.insertStringAt(
+          withoutCrc,
+          tlv,
+          tag53.valueEnd
+        );
+    }
+
+    /**
+     * Generate new CRC.
+     */
+    const checksum =
+      this.generateChecksum(
+        newQrText + '6304'
+      );
+
+    /**
+     * Important:
+     * CRC is calculated over
+     * payload + "6304".
+     */
+    const finalQrText =
+      newQrText +
+      '6304' +
+      checksum;
+
+    console.log(
+      'Generated QR:',
+      finalQrText
+    );
+
+    /**
+     * ONLY HERE do we update
+     * the generated QR.
+     *
+     * Therefore errors before this
+     * point cannot make the result
+     * disappear.
+     */
+    this.generatedQrText =
+      finalQrText;
+
+    /**
+     * Restart reveal animation.
+     */
+    requestAnimationFrame(() => {
+      this.restartRevealAnimation();
+    });
   }
 
   /**
-   * NEW - Restart animasi CSS tanpa unmount elemen (menghindari flash).
-   * Trik: set animation ke 'none', paksa reflow (baca offsetWidth),
-   * baru kembalikan animation-nya - ini bikin browser replay animasi dari awal
-   * meski elemennya sendiri tidak pernah dihapus dari DOM.
+   * Restart QR reveal animation
+   * without destroying DOM.
    */
   private restartRevealAnimation(): void {
-    const el = this.qrRevealRef?.nativeElement;
-    if (!el) return;
+
+    const el =
+      this.qrRevealRef?.nativeElement;
+
+    if (!el) {
+      return;
+    }
 
     el.style.animation = 'none';
-    void el.offsetWidth; // force reflow - baris ini WAJIB ada, jangan dihapus
+
+    /**
+     * Force browser reflow.
+     */
+    void el.offsetWidth;
+
     el.style.animation = '';
   }
 
-  insertStringAt(originalString: string, stringToInsert: string, index: number) {
-    if (index > originalString.length) {
+  /**
+   * Insert string at specific position.
+   */
+  insertStringAt(
+    originalString: string,
+    stringToInsert: string,
+    index: number
+  ): string {
+
+    if (
+      index > originalString.length
+    ) {
       index = originalString.length;
     }
-    return originalString.slice(0, index) + stringToInsert + originalString.slice(index);
+
+    return (
+      originalString.slice(
+        0,
+        index
+      ) +
+      stringToInsert +
+      originalString.slice(
+        index
+      )
+    );
   }
 }

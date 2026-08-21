@@ -8,6 +8,8 @@
   --accent-yellow: #fde047;
   --accent-pink: #f9a8d4;
   --accent-green: #86efac;
+  --accent-red: #fca5a5;
+
   font-family: 'Space Grotesk', sans-serif;
 }
 
@@ -64,7 +66,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
-  animation: bounce-in-fwd .6s both;
+  animation: bounce-in-fwd 0.6s both;
 }
 
 @keyframes bounce-in-fwd {
@@ -72,25 +74,32 @@
     transform: scale(0);
     opacity: 0;
   }
+
   38% {
     transform: scale(1);
     opacity: 1;
   }
+
   55% {
-    transform: scale(.7);
+    transform: scale(0.7);
   }
+
   72% {
     transform: scale(1);
   }
+
   81% {
-    transform: scale(.84);
+    transform: scale(0.84);
   }
+
   89% {
     transform: scale(1);
   }
+
   95% {
-    transform: scale(.95);
+    transform: scale(0.95);
   }
+
   100% {
     transform: scale(1);
   }
@@ -101,7 +110,7 @@
   font-size: 1.4rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: -.02em;
+  letter-spacing: -0.02em;
 }
 
 .section {
@@ -111,14 +120,14 @@
 .label,
 .result-label {
   display: block;
-  margin-bottom: .35rem;
-  font-size: .8rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .result-label {
-  margin-bottom: .5rem;
+  margin-bottom: 0.5rem;
 }
 
 .file-input-hidden {
@@ -127,14 +136,14 @@
 
 .file-upload-row {
   display: flex;
-  gap: .6rem;
+  gap: 0.6rem;
   width: 100%;
 }
 
 .file-btn {
   flex: 1;
   min-width: 0;
-  padding: .6rem 1rem;
+  padding: 0.6rem 1rem;
   overflow: hidden;
   border: var(--border-width) solid var(--border-color);
   border-radius: 4px;
@@ -188,7 +197,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: .75rem;
+  padding: 0.75rem;
   border: var(--border-width) solid var(--border-color);
   border-radius: 4px;
   background: var(--accent-pink);
@@ -196,8 +205,8 @@
 }
 
 .example-label {
-  margin: 0 0 .5rem;
-  font-size: .8rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
@@ -213,7 +222,7 @@
   display: flex;
   align-items: center;
   margin: 1rem 0;
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
 }
@@ -226,19 +235,19 @@
 }
 
 .divider span {
-  padding: 0 .75rem;
+  padding: 0 0.75rem;
 }
 
 .textarea,
 .text-input {
   width: 100%;
-  padding: .6rem;
+  padding: 0.6rem;
   border: var(--border-width) solid var(--border-color);
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text-color);
   font-family: 'Courier New', monospace;
-  font-size: .85rem;
+  font-size: 0.85rem;
   box-sizing: border-box;
 }
 
@@ -249,7 +258,7 @@
 .textarea::placeholder,
 .text-input::placeholder {
   color: var(--text-color);
-  opacity: .45;
+  opacity: 0.45;
 }
 
 .textarea:focus,
@@ -269,14 +278,14 @@
 .btn {
   flex: 1;
   min-width: 160px;
-  padding: .65rem 1.1rem;
+  padding: 0.65rem 1.1rem;
   border: var(--border-width) solid var(--border-color);
   border-radius: 4px;
   box-shadow: 4px 4px 0 var(--border-color);
   color: #111;
   cursor: pointer;
   font-family: inherit;
-  font-size: .85rem;
+  font-size: 0.85rem;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -294,11 +303,11 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  margin: 1rem 0 .4rem;
+  margin: 1rem 0 0.4rem;
 }
 
 .copy-btn {
-  padding: .35rem .7rem;
+  padding: 0.35rem 0.7rem;
   border: 2px solid var(--border-color);
   border-radius: 4px;
   background: var(--accent-green);
@@ -306,7 +315,7 @@
   color: #111;
   cursor: pointer;
   font-family: inherit;
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -320,7 +329,7 @@
 }
 
 .result-placeholder {
-  font-size: .9rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: #999;
   text-align: center;
@@ -335,65 +344,108 @@
   border-radius: 4px;
 }
 
-.error-box {
-  margin-top: .5rem;
-  padding: .6rem .9rem;
-  border: var(--border-width) solid var(--border-color);
-  border-radius: 4px;
-  background: #fca5a5;
-  box-shadow: 3px 3px 0 var(--border-color);
-  font-size: .8rem;
-  font-weight: 700;
-}
-
 .hint {
-  margin: .25rem 0 0;
+  margin: 0.25rem 0 0;
   color: #555;
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-style: italic;
 }
+
+/* =========================================
+   TOAST
+   ========================================= */
 
 .toast {
   position: fixed;
   top: 1.5rem;
   right: 1.5rem;
   z-index: 9999;
+
   display: flex;
   align-items: center;
-  gap: .6rem;
-  padding: .75rem 1rem;
+  gap: 0.6rem;
+
+  padding: 0.75rem 1rem;
+
   border: var(--border-width) solid var(--border-color);
   border-radius: 4px;
+
+  /* Default = SUCCESS */
   background: var(--accent-green);
+
   box-shadow: 5px 5px 0 var(--border-color);
+
   color: var(--border-color);
-  font-size: .8rem;
+  font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
+
   pointer-events: none;
+
   opacity: 0;
   transform: translateX(120%);
-  transition: opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1);
+
+  transition:
+    opacity 0.2s,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.toast-visible {
+/* Toast sedang ditampilkan */
+.toast.toast-visible {
   opacity: 1;
   transform: translateX(0);
 }
+
+/* =========================================
+   ERROR TOAST
+   PENTING: specificity lebih tinggi
+   supaya override background .toast
+   ========================================= */
+
+.toast.toast-error {
+  background: #ef4444;
+  color: #000;
+}
+
+/* Error icon */
+.toast.toast-error .toast-icon {
+  background: #fca5a5;
+}
+
+/* =========================================
+   SUCCESS TOAST
+   ========================================= */
+
+.toast:not(.toast-error) {
+  background: var(--accent-green);
+}
+
+/* =========================================
+   TOAST ICON
+   ========================================= */
 
 .toast-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+
   flex: 0 0 22px;
+
   width: 22px;
   height: 22px;
+
   border: 2px solid var(--border-color);
   border-radius: 50%;
+
   background: var(--bg-card);
-  font-size: .75rem;
+
+  font-size: 0.75rem;
   font-weight: 900;
 }
+
+/* =========================================
+   MOBILE
+   ========================================= */
 
 @media (max-width: 768px) {
   .page {
@@ -429,6 +481,10 @@
     left: 1rem;
   }
 }
+
+/* =========================================
+   REDUCED MOTION
+   ========================================= */
 
 @media (prefers-reduced-motion: reduce) {
   .qr-reveal,
