@@ -107,59 +107,6 @@ body::after {
   }
 }
 /* ----------------------------------------------
- * Dark mode
- * ---------------------------------------------- */
-
-body.dark-mode {
-  background: #1c1e22;
-
-  transition: background 0.3s ease;
-}
-
-body.dark-mode::before {
-  background: linear-gradient(
-    90deg,
-    #1c1e22 0%,
-    #2f3e4e 30%,
-    #6e5568 55%,
-    #4d6357 75%,
-    #1c1e22 100%
-  );
-
-  background-size: 300% 100%;
-}
-
-body.dark-mode::after {
-  background-image: radial-gradient(
-    circle,
-    #ffffff10 1px,
-    transparent 1px
-  );
-
-  background-size: 20px 20px;
-}
-
-/* ----------------------------------------------
- * Dark mode scrollbar
- * ---------------------------------------------- */
-
-body.dark-mode ::-webkit-scrollbar-track {
-  background: #1c1e22;
-
-  border-left: 3px solid #d9c08a;
-}
-
-body.dark-mode ::-webkit-scrollbar-thumb {
-  background: #5b7c99;
-
-  border: 3px solid #d9c08a;
-}
-
-body.dark-mode ::-webkit-scrollbar-corner {
-  background: #1c1e22;
-}
-
-/* ----------------------------------------------
  * Scrollbar - Neo Brutalism
  * ---------------------------------------------- */
 

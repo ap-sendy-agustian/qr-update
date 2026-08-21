@@ -1,4 +1,4 @@
-import { Component, HostBinding, Renderer2, ViewChild, ElementRef } from '@angular/core';
+import { Component, ViewChild, ElementRef } from '@angular/core';
 import { BrowserQRCodeReader } from '@zxing/browser';
 
 interface TlvTag {
@@ -17,31 +17,15 @@ interface TlvTag {
 export class AppComponent {
   codeReader: BrowserQRCodeReader;
 
-  constructor(private renderer: Renderer2) {
+  constructor() {
     this.codeReader = new BrowserQRCodeReader();
   }
 
-  darkMode: boolean = false;
   showCopyToast = false;
 
   // NEW - referensi elemen buat restart animasi tanpa perlu destroy/recreate DOM
   @ViewChild('qrReveal') qrRevealRef?: ElementRef<HTMLDivElement>;
 
-  // NEW - biar :host(.dark-mode) di CSS component ini bisa nge-trigger override variabel warna
-  @HostBinding('class.dark-mode') get isDarkModeHostClass(): boolean {
-    return this.darkMode;
-  }
-
-  toggleDarkMode(): void {
-    this.darkMode = !this.darkMode;
-    // body juga perlu di-toggle manual karena background body didefinisikan di styles.css (global),
-    // bukan di dalam scope component ini
-    if (this.darkMode) {
-      this.renderer.addClass(document.body, 'dark-mode');
-    } else {
-      this.renderer.removeClass(document.body, 'dark-mode');
-    }
-  }
 
   removeSelectedFile(): void {
   this.selectedFile = null;
