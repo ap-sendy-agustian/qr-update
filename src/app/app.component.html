@@ -1,4 +1,5 @@
 <div class="page">
+
   <div class="layout">
 
     <!-- LEFT CARD -->
@@ -28,6 +29,7 @@
             aria-label="Remove uploaded file"
             title="Remove file"
           >
+
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="18"
@@ -45,20 +47,20 @@
               <path d="M10 11v5"></path>
               <path d="M14 11v5"></path>
             </svg>
+
           </button>
 
         </div>
 
-        <input
-          id="fileUpload"
-          type="file"
-          (change)="onFileSelected($event)"
-          accept="image/*"
-          class="file-input-hidden"
-        >
+      <input
+  id="fileUpload"
+  type="file"
+  (change)="onFileSelected($event)"
+  accept="image/*,.heic,.heif"
+  class="file-input-hidden"
+/>
 
       </div>
-
 
       <!-- EXAMPLE -->
       <div class="section example-box">
@@ -75,12 +77,10 @@
 
       </div>
 
-
       <!-- DIVIDER -->
       <div class="divider">
         <span>ATAU</span>
       </div>
-
 
       <!-- RAW QR TEXT -->
       <div class="section">
@@ -98,7 +98,6 @@
 
       </div>
 
-
       <!-- AMOUNT -->
       <div class="section">
 
@@ -115,6 +114,97 @@
 
       </div>
 
+      <!-- TIP -->
+      <div class="section">
+
+        <label class="label">
+          Tip (opsional)
+        </label>
+
+        <div class="tip-option-row">
+
+          <button
+            type="button"
+            class="tip-option-btn"
+            [class.tip-option-btn-active]="tipIndicator === ''"
+            (click)="onTipIndicatorChange('')"
+          >
+            Tidak ada
+          </button>
+
+          <button
+            type="button"
+            class="tip-option-btn"
+            [class.tip-option-btn-active]="tipIndicator === '01'"
+            (click)="onTipIndicatorChange('01')"
+            title="Konsumen diminta memasukkan sendiri nominal tip"
+          >
+            Minta Konfirmasi
+          </button>
+
+          <button
+            type="button"
+            class="tip-option-btn"
+            [class.tip-option-btn-active]="tipIndicator === '02'"
+            (click)="onTipIndicatorChange('02')"
+          >
+            Fixed
+          </button>
+
+          <button
+            type="button"
+            class="tip-option-btn"
+            [class.tip-option-btn-active]="tipIndicator === '03'"
+            (click)="onTipIndicatorChange('03')"
+          >
+            Percentage
+          </button>
+
+        </div>
+
+        <!-- Fixed tip value input (tag 56) -->
+        <div
+          *ngIf="tipIndicator === '02'"
+          class="tip-value-wrapper"
+        >
+          <label class="label">
+            Nominal Tip (Fixed)
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="tipValueFixed"
+            placeholder="contoh: 5000 atau 5000.00"
+            class="text-input"
+          >
+
+          <p class="hint">
+            Hanya angka dan titik desimal. Tidak boleh 0.
+          </p>
+        </div>
+
+        <!-- Percentage tip value input (tag 57) -->
+        <div
+          *ngIf="tipIndicator === '03'"
+          class="tip-value-wrapper"
+        >
+          <label class="label">
+            Persentase Tip (%)
+          </label>
+
+          <input
+            type="text"
+            [(ngModel)]="tipValuePercentage"
+            placeholder="contoh: 5.5 atau 10"
+            class="text-input"
+          >
+
+          <p class="hint">
+            Nilai antara 0.01 dan 99.99. Jangan sertakan simbol "%".
+          </p>
+        </div>
+
+      </div>
 
       <!-- HINT -->
       <p class="hint">
@@ -123,11 +213,11 @@
         baru fallback ke QR text kalau gambar kosong.
       </p>
 
-
       <!-- GENERATE -->
       <div class="button-row">
 
         <button
+          type="button"
           (click)="generate()"
           class="btn btn-blue"
         >
@@ -137,7 +227,6 @@
       </div>
 
     </div>
-
 
     <!-- RIGHT RESULT CARD -->
     <div
@@ -158,14 +247,12 @@
             QR hasil generate
           </p>
 
-
           <!-- QR CODE -->
           <qrcode
             [qrdata]="generatedQrText"
             [width]="220"
             [errorCorrectionLevel]="'M'"
           ></qrcode>
-
 
           <!-- RAW TEXT HEADER -->
           <div class="raw-text-header">
@@ -175,15 +262,14 @@
             </p>
 
             <button
+              type="button"
               (click)="copyToClipboard()"
               class="copy-btn"
-              type="button"
             >
               {{ copiedFeedback ? 'Copied!' : 'Copy' }}
             </button>
 
           </div>
-
 
           <!-- RAW TEXT -->
           <textarea
@@ -195,7 +281,6 @@
         </div>
 
       </ng-container>
-
 
       <!-- EMPTY RESULT -->
       <ng-template #emptyResult>
@@ -209,7 +294,6 @@
     </div>
 
   </div>
-
 
   <!-- TOAST -->
   <div

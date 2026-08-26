@@ -21,23 +21,27 @@ export class AppComponent {
   title = 'qr-update';
 
   selectedFile: File | null = null;
-
   imageSrc: string | ArrayBuffer | null = null;
 
   originalQrText: string | null = null;
-
   generatedQrText: string | null = null;
 
   newAmount = '';
-
   rawQrText = '';
+
+  // NEW - Tip feature (tag 55/56/57)
+  // '' = tidak ada tip sama sekali (tag 55/56/57 tidak akan ditambahkan/dihapus)
+  // '01' = minta konfirmasi konsumen untuk isi tip sendiri (tanpa tag 56/57)
+  // '02' = fixed tip amount (butuh tag 56)
+  // '03' = percentage tip (butuh tag 57)
+  tipIndicator: '' | '01' | '02' | '03' = '';
+  tipValueFixed = '';
+  tipValuePercentage = '';
 
   copiedFeedback = false;
 
   showCopyToast = false;
-
   toastMessage = '';
-
   toastType: 'success' | 'error' = 'success';
 
   private toastTimeout?: ReturnType<typeof setTimeout>;
@@ -66,7 +70,7 @@ export class AppComponent {
   }
 
   /**
-   * Show toast message
+   * Show toast
    */
   private showToast(
     message: string,
@@ -84,6 +88,22 @@ export class AppComponent {
     this.toastTimeout = setTimeout(() => {
       this.showCopyToast = false;
     }, 2500);
+  }
+
+  /**
+   * NEW - Handle perubahan pilihan Tip Indicator dari UI.
+   * Reset value fixed/percentage yang tidak relevan lagi ketika
+   * user ganti pilihan, supaya tidak ada state basi tertinggal.
+   */
+  onTipIndicatorChange(value: '' | '01' | '02' | '03'): void {
+    this.tipIndicator = value;
+
+    if (value !== '02') {
+      this.tipValueFixed = '';
+    }
+    if (value !== '03') {
+      this.tipValuePercentage = '';
+    }
   }
 
   /**
@@ -135,22 +155,23 @@ export class AppComponent {
       event.target as HTMLInputElement;
 
     if (
-      input.files &&
-      input.files.length > 0
+      !input.files ||
+      input.files.length === 0
     ) {
-
-      const file = input.files[0];
-
-      this.selectedFile = file;
-
-      console.log('Selected file:', {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      });
-
-      this.readImage(file);
+      return;
     }
+
+    const file = input.files[0];
+
+    this.selectedFile = file;
+
+    console.log('Selected file:', {
+      name: file.name,
+      type: file.type,
+      size: file.size
+    });
+
+    this.readImage(file);
   }
 
   /**
@@ -170,6 +191,7 @@ export class AppComponent {
         'Gagal membaca gambar.',
         'error'
       );
+
     };
 
     reader.readAsDataURL(file);
@@ -207,10 +229,27 @@ export class AppComponent {
         'Sumber input: raw QR text'
       );
 
-      this.originalQrText =
+      const qrText =
         this.rawQrText.trim();
 
-      this.runValidationAndReplace();
+      const validationError =
+        this.validateQrisFormat(qrText);
+
+      if (validationError) {
+
+        console.error(validationError);
+
+        this.showToast(
+          validationError,
+          'error'
+        );
+
+        return;
+      }
+
+      this.originalQrText = qrText;
+
+      this.replaceQrText();
 
       return;
     }
@@ -222,256 +261,112 @@ export class AppComponent {
   }
 
   /**
-   * Decode QR code from uploaded image.
+   * Detect HEIC / HEIF
+   */
+  private isHeicFile(file: File): boolean {
+
+    return (
+      file.type === 'image/heic' ||
+      file.type === 'image/heif' ||
+      /\.heic$/i.test(file.name) ||
+      /\.heif$/i.test(file.name)
+    );
+  }
+
+  /**
+   * Decode QR code from uploaded image
    *
-   * Strategy:
-   *
-   * 1. Load image properly using Promise.
-   * 2. Try direct ZXing image decoding.
-   * 3. If that fails, fallback to canvas.
-   * 4. Resize huge iPhone photos before canvas decoding.
+   * Supports:
+   * - PNG
+   * - JPG
+   * - JPEG
+   * - WEBP
+   * - HEIC
+   * - HEIF
    */
   async decodeQRCodeImage(
     file: File
   ): Promise<void> {
 
-    const imageUrl =
-      URL.createObjectURL(file);
+    let imageUrl: string | null = null;
 
     try {
 
-      /*
-       * ==================================================
-       * LOAD IMAGE
-       * ==================================================
-       */
+      const isHeic =
+        this.isHeicFile(file);
+
+      console.log('File:', file.name);
+      console.log('Type:', file.type);
+      console.log('Size:', file.size);
+      console.log('Is HEIC:', isHeic);
+
+      if (isHeic) {
+
+        console.log(
+          'HEIC/HEIF detected.'
+        );
+
+        console.log(
+          'Converting HEIC/HEIF to JPEG...'
+        );
+
+        const jpegBlob =
+          await this.convertHeicToJpeg(file);
+
+        console.log(
+          'HEIC conversion result:',
+          jpegBlob.type,
+          jpegBlob.size
+        );
+
+        imageUrl =
+          URL.createObjectURL(jpegBlob);
+
+        const img =
+          await this.loadImage(imageUrl);
+
+        console.log(
+          'HEIC converted to:',
+          jpegBlob.type,
+          jpegBlob.size
+        );
+
+        console.log(
+          'Image loaded:',
+          img.naturalWidth,
+          'x',
+          img.naturalHeight
+        );
+
+        const canvas =
+          this.imageToCanvas(img);
+
+        await this.decodeQrWithMultipleAttempts(
+          canvas
+        );
+
+        return;
+      }
+
+      imageUrl =
+        URL.createObjectURL(file);
+
       const img =
         await this.loadImage(imageUrl);
 
       console.log(
         'Image loaded:',
-        {
-          width: img.width,
-          height: img.height,
-          naturalWidth: img.naturalWidth,
-          naturalHeight: img.naturalHeight,
-          fileType: file.type,
-          fileSize: file.size
-        }
-      );
-
-      /*
-       * ==================================================
-       * 1. DIRECT IMAGE DECODING
-       * ==================================================
-       *
-       * Try decoding directly from HTMLImageElement.
-       *
-       * This avoids forcing every image through canvas
-       * first and is useful for Safari/iOS.
-       */
-      try {
-
-        console.log(
-          'Trying direct image decoding...'
-        );
-
-        const result =
-          await this.codeReader
-            .decodeFromImageElement(img);
-
-        const qrText =
-          result.getText();
-
-        console.log(
-          'QR decoded directly:',
-          qrText
-        );
-
-        const validationError =
-          this.validateQrisFormat(qrText);
-
-        if (validationError) {
-
-          console.error(
-            validationError
-          );
-
-          this.showToast(
-            validationError,
-            'error'
-          );
-
-          return;
-        }
-
-        /*
-         * Only update state after QR
-         * successfully passes validation.
-         */
-        this.originalQrText =
-          qrText;
-
-        this.replaceQrText();
-
-        return;
-
-      } catch (directError) {
-
-        console.warn(
-          'Direct image decoding failed. Trying canvas fallback...',
-          directError
-        );
-      }
-
-      /*
-       * ==================================================
-       * 2. CANVAS FALLBACK
-       * ==================================================
-       */
-
-      console.log(
-        'Trying canvas decoding...'
+        img.naturalWidth,
+        'x',
+        img.naturalHeight
       );
 
       const canvas =
-        document.createElement('canvas');
+        this.imageToCanvas(img);
 
-      const context =
-        canvas.getContext(
-          '2d',
-          {
-            willReadFrequently: true
-          }
-        );
-
-      if (!context) {
-
-        this.showToast(
-          'Gagal memproses gambar.',
-          'error'
-        );
-
-        return;
-      }
-
-      /*
-       * iPhone photos can be very large.
-       *
-       * Example:
-       * 4032 x 3024
-       *
-       * We don't need that much resolution
-       * for QR detection.
-       */
-      const MAX_SIZE = 2000;
-
-      let width =
-        img.naturalWidth ||
-        img.width;
-
-      let height =
-        img.naturalHeight ||
-        img.height;
-
-      const largestDimension =
-        Math.max(
-          width,
-          height
-        );
-
-      const scale =
-        Math.min(
-          1,
-          MAX_SIZE / largestDimension
-        );
-
-      width =
-        Math.round(
-          width * scale
-        );
-
-      height =
-        Math.round(
-          height * scale
-        );
-
-      console.log(
-        'Canvas size:',
-        {
-          width,
-          height,
-          scale
-        }
+      await this.decodeQrWithMultipleAttempts(
+        canvas
       );
-
-      canvas.width = width;
-      canvas.height = height;
-
-      context.drawImage(
-        img,
-        0,
-        0,
-        width,
-        height
-      );
-
-      /*
-       * ==================================================
-       * CANVAS QR DECODING
-       * ==================================================
-       */
-      try {
-
-        const result =
-          await this.codeReader
-            .decodeFromCanvas(canvas);
-
-        const qrText =
-          result.getText();
-
-        console.log(
-          'QR decoded from canvas:',
-          qrText
-        );
-
-        const validationError =
-          this.validateQrisFormat(qrText);
-
-        if (validationError) {
-
-          console.error(
-            validationError
-          );
-
-          this.showToast(
-            validationError,
-            'error'
-          );
-
-          return;
-        }
-
-        /*
-         * Only update state after validation.
-         */
-        this.originalQrText =
-          qrText;
-
-        this.replaceQrText();
-
-      } catch (canvasError) {
-
-        console.error(
-          'Canvas QR decoding failed:',
-          canvasError
-        );
-
-        this.showToast(
-          'Gambar tidak mengandung QR code yang bisa dibaca. Pastikan seluruh QR terlihat jelas dan tidak blur.',
-          'error'
-        );
-      }
 
     } catch (error) {
 
@@ -481,26 +376,95 @@ export class AppComponent {
       );
 
       this.showToast(
-        'Gagal memuat gambar. Pastikan file yang diupload adalah gambar yang valid.',
+        'Gagal membaca gambar. Pastikan gambar tidak rusak dan merupakan foto QR yang valid.',
         'error'
       );
 
     } finally {
 
-      /*
-       * Release object URL.
-       */
-      URL.revokeObjectURL(imageUrl);
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
     }
   }
 
   /**
-   * Load image and wait until it is completely loaded.
-   *
-   * Important:
-   *
-   * This fixes the old async onload flow where
-   * decodeQRCodeImage() could finish before img.onload.
+   * Convert HEIC/HEIF to JPEG.
+   */
+  private async convertHeicToJpeg(
+    file: File
+  ): Promise<Blob> {
+
+    const ImageDecoderConstructor =
+      (window as any).ImageDecoder;
+
+    if (ImageDecoderConstructor) {
+
+      try {
+
+        console.log(
+          'Trying browser ImageDecoder...'
+        );
+
+        const buffer =
+          await file.arrayBuffer();
+
+        const decoder =
+          new ImageDecoderConstructor({
+            data: buffer,
+            type: file.type || 'image/heic'
+          });
+
+        const result =
+          await decoder.decode();
+
+        const frame =
+          result.image;
+
+        const canvas =
+          document.createElement('canvas');
+
+        canvas.width =
+          frame.displayWidth;
+
+        canvas.height =
+          frame.displayHeight;
+
+        const context =
+          canvas.getContext('2d');
+
+        if (!context) {
+          throw new Error(
+            'CANVAS_CONTEXT_ERROR'
+          );
+        }
+
+        context.drawImage(
+          frame,
+          0,
+          0
+        );
+
+        return await this.canvasToJpeg(
+          canvas
+        );
+
+      } catch (error) {
+
+        console.warn(
+          'ImageDecoder failed:',
+          error
+        );
+      }
+    }
+
+    throw new Error(
+      'HEIC_CONVERSION_NOT_SUPPORTED'
+    );
+  }
+
+  /**
+   * Load image from object URL
    */
   private loadImage(
     imageUrl: string
@@ -509,14 +473,14 @@ export class AppComponent {
     return new Promise(
       (resolve, reject) => {
 
-        const img =
+        const image =
           new Image();
 
-        img.onload = () => {
-          resolve(img);
+        image.onload = () => {
+          resolve(image);
         };
 
-        img.onerror = () => {
+        image.onerror = () => {
           reject(
             new Error(
               'IMAGE_LOAD_ERROR'
@@ -524,44 +488,506 @@ export class AppComponent {
           );
         };
 
-        img.src = imageUrl;
+        image.src = imageUrl;
       }
     );
   }
 
   /**
-   * Validate raw QR text before replacing amount.
+   * Convert HTMLImageElement to canvas
    */
-  private runValidationAndReplace(): void {
+  private imageToCanvas(
+    img: HTMLImageElement
+  ): HTMLCanvasElement {
 
-    if (!this.originalQrText) {
-      return;
+    const canvas =
+      document.createElement('canvas');
+
+    canvas.width =
+      img.naturalWidth || img.width;
+
+    canvas.height =
+      img.naturalHeight || img.height;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error(
+        'CANVAS_CONTEXT_ERROR'
+      );
     }
 
-    const validationError =
-      this.validateQrisFormat(
-        this.originalQrText
-      );
+    context.drawImage(
+      img,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
 
-    if (validationError) {
-
-      console.error(
-        validationError
-      );
-
-      this.showToast(
-        validationError,
-        'error'
-      );
-
-      return;
-    }
-
-    this.replaceQrText();
+    return canvas;
   }
 
   /**
-   * Validate QRIS MPM structure.
+   * Convert canvas to JPEG
+   */
+  private canvasToJpeg(
+    canvas: HTMLCanvasElement
+  ): Promise<Blob> {
+
+    return new Promise(
+      (resolve, reject) => {
+
+        canvas.toBlob(
+          blob => {
+
+            if (!blob) {
+
+              reject(
+                new Error(
+                  'JPEG_CONVERSION_FAILED'
+                )
+              );
+
+              return;
+            }
+
+            resolve(blob);
+          },
+          'image/jpeg',
+          0.95
+        );
+      }
+    );
+  }
+
+  /**
+   * MULTI QR DECODE
+   */
+  private async decodeQrWithMultipleAttempts(
+    originalCanvas: HTMLCanvasElement
+  ): Promise<void> {
+
+    console.log(
+      'Starting multi-attempt QR detection...'
+    );
+
+    const attempts: HTMLCanvasElement[] = [];
+
+    attempts.push(
+      originalCanvas
+    );
+
+    attempts.push(
+      this.resizeCanvas(
+        originalCanvas,
+        1600
+      )
+    );
+
+    attempts.push(
+      this.resizeCanvas(
+        originalCanvas,
+        1000
+      )
+    );
+
+    attempts.push(
+      this.createGrayscaleCanvas(
+        originalCanvas
+      )
+    );
+
+    attempts.push(
+      this.createContrastCanvas(
+        originalCanvas,
+        1.5
+      )
+    );
+
+    attempts.push(
+      this.createCenterCropCanvas(
+        originalCanvas,
+        0.75
+      )
+    );
+
+    const centerCrop =
+      this.createCenterCropCanvas(
+        originalCanvas,
+        0.60
+      );
+
+    attempts.push(
+      this.resizeCanvas(
+        centerCrop,
+        1600
+      )
+    );
+
+    for (
+      let i = 0;
+      i < attempts.length;
+      i++
+    ) {
+
+      console.log(
+        `Attempting QR decode #${i + 1}...`
+      );
+
+      try {
+
+        const result =
+          await this.codeReader.decodeFromCanvas(
+            attempts[i]
+          );
+
+        const qrText =
+          result.getText();
+
+        console.log(
+          `QR detected on attempt #${i + 1}:`,
+          qrText
+        );
+
+        const validationError =
+          this.validateQrisFormat(
+            qrText
+          );
+
+        if (validationError) {
+
+          console.warn(
+            `Attempt #${i + 1} detected a QR, but it is not valid QRIS:`,
+            validationError
+          );
+
+          continue;
+        }
+
+        this.originalQrText =
+          qrText;
+
+        this.replaceQrText();
+
+        return;
+
+      } catch (error) {
+
+        console.log(
+          `QR decode failed on attempt #${i + 1}`,
+          error
+        );
+      }
+    }
+
+    console.error(
+      'All QR detection attempts failed.'
+    );
+
+    this.showToast(
+      'QR tidak berhasil dibaca. Pastikan QR terlihat jelas, tidak terlalu miring, dan seluruh QR masuk ke dalam foto.',
+      'error'
+    );
+  }
+
+  /**
+   * Resize canvas while keeping aspect ratio.
+   */
+  private resizeCanvas(
+    source: HTMLCanvasElement,
+    maxSize: number
+  ): HTMLCanvasElement {
+
+    const sourceWidth =
+      source.width;
+
+    const sourceHeight =
+      source.height;
+
+    const scale =
+      Math.min(
+        1,
+        maxSize /
+          Math.max(
+            sourceWidth,
+            sourceHeight
+          )
+      );
+
+    const width =
+      Math.max(
+        1,
+        Math.round(
+          sourceWidth * scale
+        )
+      );
+
+    const height =
+      Math.max(
+        1,
+        Math.round(
+          sourceHeight * scale
+        )
+      );
+
+    const canvas =
+      document.createElement('canvas');
+
+    canvas.width =
+      width;
+
+    canvas.height =
+      height;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      return source;
+    }
+
+    context.imageSmoothingEnabled =
+      true;
+
+    context.imageSmoothingQuality =
+      'high';
+
+    context.drawImage(
+      source,
+      0,
+      0,
+      width,
+      height
+    );
+
+    return canvas;
+  }
+
+  /**
+   * Create grayscale version.
+   */
+  private createGrayscaleCanvas(
+    source: HTMLCanvasElement
+  ): HTMLCanvasElement {
+
+    const canvas =
+      document.createElement('canvas');
+
+    canvas.width =
+      source.width;
+
+    canvas.height =
+      source.height;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      return source;
+    }
+
+    context.drawImage(
+      source,
+      0,
+      0
+    );
+
+    const imageData =
+      context.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+    const data =
+      imageData.data;
+
+    for (
+      let i = 0;
+      i < data.length;
+      i += 4
+    ) {
+
+      const gray =
+        (
+          data[i] * 0.299 +
+          data[i + 1] * 0.587 +
+          data[i + 2] * 0.114
+        );
+
+      data[i] =
+        gray;
+
+      data[i + 1] =
+        gray;
+
+      data[i + 2] =
+        gray;
+    }
+
+    context.putImageData(
+      imageData,
+      0,
+      0
+    );
+
+    return canvas;
+  }
+
+  /**
+   * Create contrast-enhanced canvas.
+   */
+  private createContrastCanvas(
+    source: HTMLCanvasElement,
+    contrast: number
+  ): HTMLCanvasElement {
+
+    const canvas =
+      document.createElement('canvas');
+
+    canvas.width =
+      source.width;
+
+    canvas.height =
+      source.height;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      return source;
+    }
+
+    context.drawImage(
+      source,
+      0,
+      0
+    );
+
+    const imageData =
+      context.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+    const data =
+      imageData.data;
+
+    const factor =
+      (259 * (contrast + 255)) /
+      (255 * (259 - contrast));
+
+    for (
+      let i = 0;
+      i < data.length;
+      i += 4
+    ) {
+
+      data[i] =
+        this.clamp(
+          factor * (data[i] - 128) + 128
+        );
+
+      data[i + 1] =
+        this.clamp(
+          factor * (data[i + 1] - 128) + 128
+        );
+
+      data[i + 2] =
+        this.clamp(
+          factor * (data[i + 2] - 128) + 128
+        );
+    }
+
+    context.putImageData(
+      imageData,
+      0,
+      0
+    );
+
+    return canvas;
+  }
+
+  /**
+   * Center crop.
+   */
+  private createCenterCropCanvas(
+    source: HTMLCanvasElement,
+    ratio: number
+  ): HTMLCanvasElement {
+
+    const cropWidth =
+      Math.floor(
+        source.width * ratio
+      );
+
+    const cropHeight =
+      Math.floor(
+        source.height * ratio
+      );
+
+    const startX =
+      Math.floor(
+        (source.width - cropWidth) / 2
+      );
+
+    const startY =
+      Math.floor(
+        (source.height - cropHeight) / 2
+      );
+
+    const canvas =
+      document.createElement('canvas');
+
+    canvas.width =
+      cropWidth;
+
+    canvas.height =
+      cropHeight;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      return source;
+    }
+
+    context.drawImage(
+      source,
+      startX,
+      startY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight
+    );
+
+    return canvas;
+  }
+
+  /**
+   * Clamp RGB value.
+   */
+  private clamp(value: number): number {
+
+    return Math.max(
+      0,
+      Math.min(
+        255,
+        value
+      )
+    );
+  }
+
+  /**
+   * Validate QRIS MPM structure
    */
   private validateQrisFormat(
     qrText: string
@@ -584,17 +1010,16 @@ export class AppComponent {
     }
 
     if (
-      !trimmed.startsWith(
-        '000201'
-      )
+      !trimmed.startsWith('000201')
     ) {
 
       return 'Format QR tidak dikenali - Payload Format Indicator (tag 00) tidak sesuai.';
     }
 
-    /*
-     * Remove CRC.
-     */
+    if (trimmed.length < 4) {
+      return 'QR text tidak memiliki CRC.';
+    }
+
     const withoutCrc =
       trimmed.slice(0, -4);
 
@@ -603,9 +1028,6 @@ export class AppComponent {
         withoutCrc
       );
 
-    /*
-     * Tag 01
-     */
     const tag01 =
       allTags.get('01');
 
@@ -622,9 +1044,6 @@ export class AppComponent {
       return 'QR ini bukan format QRIS MPM (Point of Initiation Method tidak sesuai).';
     }
 
-    /*
-     * Merchant Account Information
-     */
     const merchantAccountTags = [
       '02',
       '04',
@@ -666,17 +1085,11 @@ export class AppComponent {
       return 'QR tidak valid - Merchant Account Information tidak ditemukan.';
     }
 
-    /*
-     * Tag 52
-     */
     if (!allTags.has('52')) {
 
       return 'QR tidak valid - Merchant Category Code (tag 52) tidak ditemukan.';
     }
 
-    /*
-     * Tag 53 - Currency
-     */
     const tag53 =
       allTags.get('53');
 
@@ -692,9 +1105,6 @@ export class AppComponent {
       return 'QR tidak valid - mata uang bukan Rupiah (kode currency harus 360).';
     }
 
-    /*
-     * Tag 58 - Country
-     */
     const tag58 =
       allTags.get('58');
 
@@ -706,9 +1116,6 @@ export class AppComponent {
       return 'QR tidak valid - Country Code (tag 58) harus "ID".';
     }
 
-    /*
-     * Tag 59 - Merchant Name
-     */
     const tag59 =
       allTags.get('59');
 
@@ -720,9 +1127,6 @@ export class AppComponent {
       return 'QR tidak valid - Merchant Name (tag 59) tidak ditemukan.';
     }
 
-    /*
-     * Tag 60 - Merchant City
-     */
     const tag60 =
       allTags.get('60');
 
@@ -734,9 +1138,6 @@ export class AppComponent {
       return 'QR tidak valid - Merchant City (tag 60) tidak ditemukan.';
     }
 
-    /*
-     * CRC format
-     */
     const crc =
       trimmed.slice(-4);
 
@@ -751,20 +1152,77 @@ export class AppComponent {
   }
 
   /**
-   * Generate CRC16 checksum.
+   * NEW - Validasi input Tip (tag 55/56/57) sesuai spesifikasi ASPI.
+   * Return null kalau valid / tidak ada tip yang dipilih (tipIndicator kosong).
+   */
+  private validateTipInputs(): string | null {
+
+    if (!this.tipIndicator) {
+      return null;
+    }
+
+    if (!['01', '02', '03'].includes(this.tipIndicator)) {
+      return 'Tip Indicator tidak valid.';
+    }
+
+    if (this.tipIndicator === '02') {
+
+      const val = this.tipValueFixed?.trim();
+
+      if (!val) {
+        return 'Nominal tip (Fixed) wajib diisi.';
+      }
+
+      // 4.7.10.2 - hanya digit 0-9 dan boleh satu titik desimal, tidak negatif
+      if (!/^\d+(\.\d+)?$/.test(val)) {
+        return 'Nominal tip (Fixed) hanya boleh berisi angka dan titik desimal.';
+      }
+
+      // 4.7.10.1 - value tidak boleh "0"
+      if (parseFloat(val) === 0) {
+        return 'Nominal tip (Fixed) tidak boleh 0.';
+      }
+    }
+
+    if (this.tipIndicator === '03') {
+
+      const val = this.tipValuePercentage?.trim();
+
+      if (!val) {
+        return 'Persentase tip wajib diisi.';
+      }
+
+      // 4.7.11.2 - hanya digit 0-9 dan boleh satu titik desimal
+      if (!/^\d{1,2}(\.\d{1,2})?$/.test(val)) {
+        return 'Format persentase tip tidak valid (hanya angka dan titik, contoh: 5.5 atau 10).';
+      }
+
+      // 4.7.11.1 - range 00.01 s.d 99.99
+      const num = parseFloat(val);
+      if (num < 0.01 || num > 99.99) {
+        return 'Persentase tip harus di antara 0.01 dan 99.99.';
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Generate CRC16 checksum
    */
   generateChecksum(
     payload: string
   ): string {
 
-    let checksum = 0xffff;
+    let checksum =
+      0xffff;
 
-    const polynomial = 0x1021;
+    const polynomial =
+      0x1021;
 
     const data =
-      new TextEncoder().encode(
-        payload
-      );
+      new TextEncoder()
+        .encode(payload);
 
     for (const b of data) {
 
@@ -797,7 +1255,7 @@ export class AppComponent {
   }
 
   /**
-   * Parse QRIS TLV structure.
+   * Parse QRIS TLV
    */
   private parseAllTags(
     qrText: string
@@ -809,8 +1267,7 @@ export class AppComponent {
     let index = 0;
 
     while (
-      index <
-      qrText.length - 4
+      index < qrText.length - 4
     ) {
 
       const currentTag =
@@ -858,14 +1315,123 @@ export class AppComponent {
         }
       );
 
-      index = valueEnd;
+      index =
+        valueEnd;
     }
 
     return tags;
   }
 
   /**
-   * Replace or insert tag 54.
+   * NEW - Upsert (insert/update) atau remove sebuah tag di dalam string QRIS.
+   *
+   * - Kalau value === null -> tag akan DIHAPUS kalau ada (dan dibiarkan
+   *   kalau memang belum ada).
+   * - Kalau value diisi -> tag akan di-UPDATE kalau sudah ada di posisi yang
+   *   sama, atau di-INSERT setelah anchorTag berakhir kalau belum ada.
+   *
+   * Dipakai bareng-bareng untuk tag 54 (amount, selalu ada) maupun tag
+   * 55/56/57 (tip, optional - bisa insert/update/remove tergantung pilihan
+   * user di UI).
+   */
+  /**
+   * FIXED - Upsert (insert/update) atau remove sebuah tag di dalam string QRIS.
+   *
+   * - Kalau value === null -> tag akan DIHAPUS kalau ada (dan dibiarkan
+   *   kalau memang belum ada).
+   * - Kalau value diisi -> tag akan di-UPDATE kalau sudah ada di posisi yang
+   *   sama, atau di-INSERT setelah anchor pertama yang DITEMUKAN dari daftar
+   *   anchorTags (dicoba berurutan dari yang paling spesifik/dekat).
+   *
+   * PENTING (bug fix): sebelumnya kalau anchor tunggal tidak ditemukan,
+   * fallback-nya adalah qrText.length (ujung string) - ini SALAH karena
+   * qrText di titik ini masih menyisakan header tag 63 ("6304") yang belum
+   * di-strip, jadi insert di posisi itu bikin tag baru nyempil SETELAH
+   * header tag 63, merusak struktur QR (contoh kasus: insert tag 57 saat
+   * tag 56 tidak ada, karena mode Percentage memang tidak pernah membuat
+   * tag 56 sama sekali).
+   *
+   * Sekarang anchorTags berupa array prioritas - dicoba satu-satu dari
+   * yang paling dekat, dan HARUS selalu berakhir di tag yang dijamin ada
+   * (tag 53), bukan pernah jatuh ke ujung string mentah.
+   */
+  private upsertOrRemoveTag(
+    qrText: string,
+    tag: string,
+    value: string | null,
+    anchorTags: string[]
+  ): string {
+
+    const allTags =
+      this.parseAllTags(qrText);
+
+    const existing =
+      allTags.get(tag);
+
+    if (value === null) {
+
+      if (!existing) {
+        return qrText;
+      }
+
+      return (
+        qrText.slice(0, existing.start) +
+        qrText.slice(existing.valueEnd)
+      );
+    }
+
+    const length =
+      value.length;
+
+    const lengthStr =
+      length < 10
+        ? `0${length}`
+        : length.toString();
+
+    const tlv =
+      tag + lengthStr + value;
+
+    if (existing) {
+
+      return (
+        qrText.slice(0, existing.start) +
+        tlv +
+        qrText.slice(existing.valueEnd)
+      );
+    }
+
+    // Cari anchor pertama yang benar-benar ada, berurutan sesuai prioritas.
+    // anchorTags WAJIB diakhiri dengan '53' oleh pemanggil, supaya selalu
+    // ada fallback yang valid dan tidak pernah jatuh ke qrText.length.
+    let insertPos: number | null = null;
+
+    for (const candidateTag of anchorTags) {
+      const anchor = allTags.get(candidateTag);
+      if (anchor) {
+        insertPos = anchor.valueEnd;
+        break;
+      }
+    }
+
+    if (insertPos === null) {
+      // Ini seharusnya tidak pernah terjadi selama '53' selalu ada di
+      // anchorTags dan tag 53 sendiri sudah divalidasi ada sebelumnya
+      // di replaceQrText(). Sebagai safety net terakhir saja.
+      console.error(
+        `Tidak ada anchor valid ditemukan untuk tag ${tag}, kemungkinan bug struktur QR.`
+      );
+      insertPos = qrText.length;
+    }
+
+    return this.insertStringAt(
+      qrText,
+      tlv,
+      insertPos
+    );
+  }
+
+  /**
+   * Replace / insert tag 54, plus tag 55/56/57 (tip) kalau dipilih.
    */
   replaceQrText(): void {
 
@@ -881,15 +1447,12 @@ export class AppComponent {
         ? this.newAmount.trim()
         : '0';
 
-    const withoutCrc =
-      this.originalQrText.slice(
-        0,
-        -4
-      );
+    let workingText =
+      this.originalQrText.slice(0, -4);
 
     const allTags =
       this.parseAllTags(
-        withoutCrc
+        workingText
       );
 
     const tag53 =
@@ -905,114 +1468,109 @@ export class AppComponent {
       return;
     }
 
-    const tag = '54';
+    // NEW - Validasi input tip SEBELUM ada perubahan apa pun ke QR
+    const tipValidationError =
+      this.validateTipInputs();
 
-    const length =
-      amount.length;
+    if (tipValidationError) {
 
-    const lengthStr =
-      length < 10
-        ? `0${length}`
-        : length.toString();
-
-    const tlv =
-      tag +
-      lengthStr +
-      amount;
-
-    const existingTag54 =
-      allTags.get('54');
-
-    let newQrText: string;
-
-    /*
-     * Update existing tag 54.
-     */
-    if (existingTag54) {
-
-      console.log(
-        'Tag 54 sudah ada, melakukan update di posisi: ' +
-        existingTag54.start
+      this.showToast(
+        tipValidationError,
+        'error'
       );
 
-      newQrText =
-        withoutCrc.slice(
-          0,
-          existingTag54.start
-        ) +
-        tlv +
-        withoutCrc.slice(
-          existingTag54.valueEnd
-        );
-
-    } else {
-
-      /*
-       * Insert new tag 54 after tag 53.
-       */
-      console.log(
-        'Tag 54 belum ada, insert baru setelah tag 53 berakhir di: ' +
-        tag53.valueEnd
-      );
-
-      newQrText =
-        this.insertStringAt(
-          withoutCrc,
-          tlv,
-          tag53.valueEnd
-        );
+      return;
     }
 
-    console.log(
-      'QR tanpa CRC:',
-      newQrText
+    // --- Tag 54 (Transaction Amount) ---
+    workingText = this.upsertOrRemoveTag(
+      workingText,
+      '54',
+      amount,
+      ['53']
     );
 
-    /*
-     * Generate new CRC.
-     */
+    // NEW --- Tag 55 (Tip Indicator) ---
+    // null kalau tipIndicator kosong -> tag 55 (dan 56/57) otomatis
+    // dihapus dari QR kalau sebelumnya sempat ada.
+    workingText = this.upsertOrRemoveTag(
+      workingText,
+      '55',
+      this.tipIndicator || null,
+      ['54', '53']
+    );
+
+    // NEW --- Tag 56 (Tip Value Fixed) ---
+    // hanya diisi kalau tipIndicator === '02', selain itu dihapus.
+    const fixedValue =
+      this.tipIndicator === '02'
+        ? this.tipValueFixed.trim()
+        : null;
+
+    workingText = this.upsertOrRemoveTag(
+      workingText,
+      '56',
+      fixedValue,
+      ['55', '54', '53']
+    );
+
+    // NEW --- Tag 57 (Tip Value Percentage) ---
+    // hanya diisi kalau tipIndicator === '03', selain itu dihapus.
+    // FIX: anchor sekarang berjenjang ['56','55','54','53'] - karena mode
+    // Percentage TIDAK PERNAH membuat tag 56, jadi kalau cuma mengandalkan
+    // anchor tunggal '56', dia akan gagal ditemukan dan (sebelum fix ini)
+    // jatuh ke ujung string yang salah. Sekarang otomatis fallback ke '55'
+    // (yang pasti ada di mode ini), tanpa pernah menyentuh qrText.length.
+    const percentageValue =
+      this.tipIndicator === '03'
+        ? this.tipValuePercentage.trim()
+        : null;
+
+    workingText = this.upsertOrRemoveTag(
+      workingText,
+      '57',
+      percentageValue,
+      ['56', '55', '54', '53']
+    );
+
+    console.log(
+      'yang baru : ' +
+      workingText
+    );
+
     const checksum =
       this.generateChecksum(
-        newQrText
+        workingText
       );
 
     console.log(
-      'Checksum:',
+      'checksum nya: ' +
       checksum
     );
 
     const finalQrText =
-      newQrText +
+      workingText +
       checksum;
 
     console.log(
-      'Final QR:',
+      'new nya: ' +
       finalQrText
     );
 
-    /*
-     * Only update generatedQrText
-     * after everything succeeds.
-     *
-     * This prevents the result card
-     * from disappearing on errors.
+    /**
+     * Only update result after
+     * everything succeeds.
      */
     this.generatedQrText =
       finalQrText;
 
-    /*
-     * Restart reveal animation.
-     */
-    requestAnimationFrame(
-      () => {
-        this.restartRevealAnimation();
-      }
-    );
+    requestAnimationFrame(() => {
+      this.restartRevealAnimation();
+    });
   }
 
   /**
-   * Restart QR reveal animation
-   * without destroying/recreating DOM.
+   * Restart reveal animation
    */
   private restartRevealAnimation(): void {
 
@@ -1023,18 +1581,17 @@ export class AppComponent {
       return;
     }
 
-    el.style.animation = 'none';
+    el.style.animation =
+      'none';
 
-    /*
-     * Force browser reflow.
-     */
     void el.offsetWidth;
 
-    el.style.animation = '';
+    el.style.animation =
+      '';
   }
 
   /**
-   * Insert string at specific position.
+   * Insert string
    */
   insertStringAt(
     originalString: string,
@@ -1043,8 +1600,7 @@ export class AppComponent {
   ): string {
 
     if (
-      index >
-      originalString.length
+      index > originalString.length
     ) {
 
       index =
@@ -1057,7 +1613,9 @@ export class AppComponent {
         index
       ) +
       stringToInsert +
-      originalString.slice(index)
+      originalString.slice(
+        index
+      )
     );
   }
 }
