@@ -1016,12 +1016,32 @@ export class AppComponent {
       return 'Format QR tidak dikenali - Payload Format Indicator (tag 00) tidak sesuai.';
     }
 
-    if (trimmed.length < 4) {
-      return 'QR text tidak memiliki CRC.';
+ 
+    // QRIS must contain a complete CRC tag at the end:
+    // 63 04 XXXX, where XXXX is the 4-character hexadecimal CRC16 value.
+    if (trimmed.length < 8) {
+
+      return 'QR tidak valid - tag CRC (63 04 + 4 karakter CRC) tidak ditemukan.';
     }
 
+    const crcTagPattern = /6304([0-9A-Fa-f]{4})$/;
+    const crcMatch = trimmed.match(crcTagPattern);
+
+    if (!crcMatch) {
+
+      if (/6304/.test(trimmed.slice(-8))) {
+        return 'QR tidak valid - CRC checksum tidak lengkap atau format tag 63 tidak sesuai.';
+      }
+
+      return 'QR tidak valid - tag CRC (6304) tidak ditemukan di akhir QR.';
+    }
+
+    const providedCrc =
+      crcMatch[1].toUpperCase();
+
+    // Remove the complete tag 63 (6304 + CRC) before parsing the QRIS TLV.
     const withoutCrc =
-      trimmed.slice(0, -4);
+      trimmed.slice(0, -8);
 
     const allTags =
       this.parseAllTags(
@@ -1138,17 +1158,86 @@ export class AppComponent {
       return 'QR tidak valid - Merchant City (tag 60) tidak ditemukan.';
     }
 
-    const crc =
-      trimmed.slice(-4);
+    // Validate the actual CRC value, not only its 4-character format.
+    // CRC is calculated over the complete payload INCLUDING the 6304 header.
+    const crcPayload =
+      trimmed.slice(0, -4);
 
-    if (
-      !/^[0-9A-Fa-f]{4}$/.test(crc)
-    ) {
+    const calculatedCrc =
+      this.generateChecksum(
+        crcPayload
+      );
 
-      return 'QR tidak valid - CRC checksum (tag 63) tidak sesuai format.';
+    if (calculatedCrc !== providedCrc) {
+
+      return `QR tidak valid - CRC checksum tidak sesuai hitungan.`;
+    }
+
+
+    return null;
+  }
+
+  /**
+   * Validate Transaction Amount (tag 54) according to QRIS rules.
+   *
+   * Rules:
+   * - Empty input is treated as "0" => tag 54 is not added/updated.
+   * - Must contain only digits with an optional decimal point.
+   * - No negative values.
+   * - No comma, spaces, or thousand separators.
+   * - Must be greater than 0 when provided.
+   *
+   * Examples:
+   *   "15000"    -> valid
+   *   "15000."   -> valid
+   *   "15000.00" -> valid
+   *   "0"        -> valid as "no amount" (tag 54 omitted)
+   *   ""         -> valid as "no amount" (tag 54 omitted)
+   *   "-100"     -> invalid
+   *   "1,000"    -> invalid
+   *   "1 000"    -> invalid
+   */
+  private validateAmountInput(): string | null {
+    const val = this.newAmount?.trim() ?? '';
+
+    // Empty amount means consumer-entered amount:
+    // do not create/update tag 54.
+    if (val === '') {
+      return null;
+    }
+
+    // Only digits, with an optional decimal point.
+    // Allows "1000", "1000.", and "1000.00".
+    if (!/^\d+(\.\d*)?$/.test(val)) {
+      return 'Nominal hanya boleh berisi angka dan titik desimal. Tidak boleh negatif, koma, atau spasi.';
+    }
+
+    // Transaction Amount must not be 0 when tag 54 is present.
+    if (Number(val) === 0) {
+      return null;
+    }
+
+    if (!Number.isFinite(Number(val)) || Number(val) < 0) {
+      return 'Nominal tidak boleh negatif.';
     }
 
     return null;
+  }
+
+  /**
+   * Return the normalized amount for tag 54.
+   *
+   * Empty / zero means tag 54 should not exist.
+   * Positive values are kept exactly as entered after trimming.
+   */
+  private getAmountTagValue(): string | null {
+    const val = this.newAmount?.trim() ?? '';
+
+    if (val === '' || Number(val) === 0) {
+      return null;
+    }
+
+    return val;
   }
 
   /**
@@ -1441,11 +1530,21 @@ export class AppComponent {
       return;
     }
 
+    // Validate Transaction Amount before changing the QR.
+    const amountValidationError =
+      this.validateAmountInput();
+
+    if (amountValidationError) {
+      this.showToast(
+        amountValidationError,
+        'error'
+      );
+
+      return;
+    }
+
     const amount =
-      this.newAmount &&
-      this.newAmount.trim() !== ''
-        ? this.newAmount.trim()
-        : '0';
+      this.getAmountTagValue();
 
     let workingText =
       this.originalQrText.slice(0, -4);
